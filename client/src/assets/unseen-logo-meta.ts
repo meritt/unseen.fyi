@@ -1,0 +1,2 @@
+export const UNSEEN_LOGO_VIEW_BOX = '0 0 486 120';
+export const UNSEEN_LOGO_VIEWBOX_WIDTH = 486;

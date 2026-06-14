@@ -1,0 +1,64 @@
+message-content {
+  --code-bg: oklch(0% 0 0 / 6%);
+
+  display: inline;
+  overflow-wrap: anywhere;
+  unicode-bidi: plaintext;
+}
+
+.md-pending-text,
+.md-fallback-text {
+  white-space: pre-wrap;
+}
+
+.md-fallback-warning {
+  display: block;
+  margin-block-end: 2px;
+  font-size: var(--text-xs);
+  font-style: italic;
+  color: var(--fg-faint);
+}
+
+.zw-marker {
+  padding-inline: 0.05em;
+  outline: 1px dotted var(--danger);
+  outline-offset: 1px;
+}
+
+.md-code,
+.md-code-block code {
+  font-family: var(--font-mono);
+}
+
+.md-code {
+  padding: 0.1em 0.35em;
+  font-size: 0.92em;
+  background: var(--code-bg);
+  border-radius: 4px;
+}
+
+.md-code-block {
+  display: block;
+  margin: 0.4em 0;
+  padding: 0.6em 0.8em;
+  overflow-x: auto;
+  white-space: pre;
+  unicode-bidi: plaintext;
+  background: var(--code-bg);
+  border-radius: 6px;
+}
+
+.md-code-block code {
+  font-size: 0.9em;
+}
+
+message-content a {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  color: var(--accent);
+  transition: color var(--transition-fast);
+}
+
+message-content a:hover {
+  color: var(--accent-strong);
+}

@@ -1,0 +1,175 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Git SHA to deploy
+        required: false
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ inputs.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: refuse non-main dispatch ref
+        if: ${{ inputs.sha != '' }}
+        env:
+          REQ_SHA: ${{ inputs.sha }}
+        run: |
+          if ! [[ "${REQ_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "inputs.sha must be a 40-char lowercase hex SHA" >&2
+            exit 1
+          fi
+          git fetch -q origin main
+          if ! git merge-base --is-ancestor "${REQ_SHA}" origin/main; then
+            echo "refusing: requested SHA is not an ancestor of origin/main" >&2
+            exit 1
+          fi
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - run: bun run format:check
+      - run: bun run lint --format=github
+      - run: bun run typecheck
+      - run: bun run test
+
+  build:
+    name: build release
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      sha: ${{ steps.meta.outputs.sha }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ inputs.sha || github.sha }}
+          persist-credentials: false
+
+      - id: meta
+        name: capture + validate
+        run: |
+          sha="$(git rev-parse HEAD)"
+          if ! [[ "${sha}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "invalid SHA: ${sha}" >&2
+            exit 1
+          fi
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+
+      - name: install all deps
+        run: bun install --frozen-lockfile
+
+      - name: client build
+        env:
+          NODE_ENV: production
+          UNSEEN_WS_URL: /ws
+          UNSEEN_RELEASE_SHA: ${{ steps.meta.outputs.sha }}
+        run: bun run build:client
+
+      - name: bundle size budget
+        run: bun run test/perf/bundle-size.ts
+
+      - name: prune to production
+        run: |
+          rm -rf node_modules
+          bun install --frozen-lockfile --production
+
+      - name: pack release
+        env:
+          SHA: ${{ steps.meta.outputs.sha }}
+        run: |
+          tar --zstd -cf "unseen-${SHA}.tar.zst" \
+            shared server client/dist node_modules package.json
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: unseen-release
+          path: unseen-*.tar.zst
+          if-no-files-found: error
+          retention-days: 1
+
+  deploy:
+    name: ship + restart
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: production
+    steps:
+      - name: mask in logs
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+        run: echo "::add-mask::${SSH_HOST}"
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: unseen-release
+
+      - name: configure
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<'EOF'
+          Host *
+            StrictHostKeyChecking yes
+            PubkeyAcceptedAlgorithms ssh-ed25519
+            HashKnownHosts yes
+            LogLevel QUIET
+            BatchMode yes
+            ServerAliveInterval 30
+            ServerAliveCountMax 3
+          EOF
+          chmod 600 ~/.ssh/config
+
+      - name: upload
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SHA: ${{ needs.build.outputs.sha }}
+        run: |
+          ssh -p "$SSH_PORT" "${SSH_USER}@${SSH_HOST}" -- \
+            "cat > /var/www/unseen.fyi/releases/.incoming/unseen-${SHA}.tar.zst" \
+            < "unseen-${SHA}.tar.zst"
+
+      - name: deploy
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SHA: ${{ needs.build.outputs.sha }}
+        run: |
+          ssh -p "$SSH_PORT" "${SSH_USER}@${SSH_HOST}" -- \
+            "deploy ${SHA}"

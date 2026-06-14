@@ -1,0 +1,10 @@
+._*
+.DS_Store
+*.local.*
+*.log
+.worktrees/
+node_modules/
+plan/
+test-results/
+playwright-report/
+perf-report.html

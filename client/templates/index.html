@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta name="description"
+    content="Private one-on-one chat that disappears. End-to-end encrypted, no sign-ups, no data stored.">
+  <link href="https://unseen.fyi" rel="canonical">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://unseen.fyi">
+  <meta property="og:title" content="Unseen — private one-on-one chat">
+  <meta property="og:description"
+    content="Private one-on-one chat that disappears. End-to-end encrypted, no sign-ups, no data stored.">
+  <meta property="og:image" content="https://unseen.fyi/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Unseen — private one-on-one chat that disappears">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Unseen — private one-on-one chat">
+  <meta name="twitter:description"
+    content="Private one-on-one chat that disappears. End-to-end encrypted, no sign-ups, no data stored.">
+  <meta name="twitter:image" content="https://unseen.fyi/og-image.png">
+  <meta name="theme-color" content="#efeee9">
+  <link href="/favicon.svg" rel="icon" type="image/svg+xml">
+  <title>peer@unseen ~ $ wait</title>
+  <!--STYLES-->
+  <!--BUNDLE-->
+</head>
+
+<body>
+  <main class="landing">
+    <div class="landing__inner">
+      <h1 class="landing__logo" data-testid="landing-logo">
+        <span class="sr-only">Unseen — private chat</span>
+        <svg class="landing__logo-svg" viewBox="0 0 1000 320" aria-hidden="true"
+          xmlns="http://www.w3.org/2000/svg"></svg>
+      </h1>
+      <p class="landing__tagline">{{landing.tagline}}</p>
+      <button class="landing__create" data-testid="create-room" type="button">
+        <span>{{landing.createButton}}</span>
+        <svg class="landing__create-arrow" viewBox="0 0 20 20" aria-hidden="true">
+          <path d="M4 10h11M11 5.5 15.5 10 11 14.5" fill="none" stroke="currentColor" stroke-width="1.75"
+            stroke-linecap="round" stroke-linejoin="round"></path>
+        </svg>
+      </button>
+      <ul class="landing__signals">
+        <li class="landing__signal">
+          <svg class="landing__signal-icon" viewBox="0 0 20 20" aria-hidden="true">
+            <rect x="4.5" y="9" width="11" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4">
+            </rect>
+            <path d="M7 9V6.5a3 3 0 0 1 6 0V9" fill="none" stroke="currentColor" stroke-width="1.4"
+              stroke-linecap="round"></path>
+          </svg>
+          <span>{{landing.signalEncrypted}}</span>
+        </li>
+        <li class="landing__signal">
+          <svg class="landing__signal-icon" viewBox="0 0 20 20" aria-hidden="true">
+            <circle cx="10" cy="10" r="6.5" fill="none" stroke="currentColor" stroke-width="1.4"></circle>
+            <path d="M10 6.5V10l2.5 1.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"
+              stroke-linejoin="round"></path>
+          </svg>
+          <span>{{landing.signalOneTime}}</span>
+        </li>
+      </ul>
+    </div>
+    <footer class="landing__footer">
+      <div class="language-toggle" role="group" aria-label="{{langToggle.label}}">
+        <button data-testid="lang-en" type="button" lang="en" aria-label="{{langToggle.enName}}"
+          aria-pressed="true">en</button>
+        <button data-testid="lang-ru" type="button" lang="ru" aria-label="{{langToggle.ruName}}"
+          aria-pressed="false">ру</button>
+      </div>
+      <p class="landing__footer-note">{{landing.footerNote}}</p>
+    </footer>
+  </main>
+</body>
+
+</html>

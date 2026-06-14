@@ -1,0 +1,108 @@
+import type { Dict } from './en.ts';
+
+export const ru: Dict = {
+  landing: {
+    title: 'unseen',
+    tagline: 'Приватный чат один на один, который исчезает.',
+    createButton: 'Создать приватную комнату',
+    signalEncrypted: 'Сквозное шифрование',
+    signalOneTime: 'Одноразовая сессия',
+    footerNote: 'Без регистрации. Ничего не хранится. Только вы и собеседник.',
+  },
+  chat: {
+    composerPlaceholder: 'Напишите сообщение',
+    composerTooLong: 'Слишком длинное сообщение',
+    sendButton: 'Отправить',
+    sasComparePrompt: 'Сверьте эмодзи, чтобы убедиться, что говорите с нужным человеком.',
+    earlierRemoved: 'Старые сообщения скрыты.',
+    newMessages: '{count} новых ↓',
+    system: {
+      waitingForPeer: 'Ждём, пока собеседник присоединится по [link].',
+      linkLabel: 'ссылке',
+      copyLink: 'Скопировать',
+      sessionStarted: 'Сессия начата. Сообщения исчезнут после её окончания.',
+      peerDisconnected: 'Собеседник отключился',
+      peerReconnected: 'Собеседник вернулся',
+      sessionEnded: 'Сессия закончена',
+      modeDowngradedToRam:
+        'Продолжаем без ключа доступа — сообщения исчезнут при обновлении страницы.',
+      modeUpgradedLocally: 'Ваша сторона сессии защищена.',
+      peerModeUpgraded: 'Собеседник защитил сессию со своей стороны.',
+      modeUpgradeInvited: 'Собеседник защитил свою сторону. [action].',
+      modeUpgradeInvitedAction: 'Защитите свою',
+      modeUpgradeDismissedByUser: 'Защита сессии отклонена.',
+      modeUpgradeFailed: 'Не удалось защитить сессию. Режим не изменён.',
+      sessionHardened: 'Сессия укреплена.',
+    },
+    placeholder: {
+      connecting: 'Соединение…',
+      resuming: 'Восстанавливаем сессию…',
+      handshaking: 'Шифруем канал…',
+      upgradingLocal: 'Настройка ключа доступа…',
+      rekeying: 'Укрепление сессии…',
+      reconnecting: 'Переподключение…',
+      reconnectingIn: 'Переподключение через {seconds} с…',
+      sessionEnding: 'Сессия завершается…',
+    },
+    resumeLocked: {
+      title: 'Сессия заблокирована. Подтвердите passkey, чтобы продолжить.',
+      retry: 'Подтвердить passkey',
+      end: 'Завершить сессию',
+    },
+    mode: {
+      statusRam: 'История живёт только в этой вкладке',
+      statusPrf: 'Эта вкладка переживёт обновление',
+      statusHardened: 'Сессия укреплена',
+    },
+    upgrade: {
+      button: 'Защитить сессию',
+      peerInvitedAccept: 'Защитить',
+      peerInvitedDismiss: 'Не сейчас',
+    },
+    fileTransfer: {
+      attachAria: 'Прикрепить файл',
+      removeAttachment: 'Удалить вложение',
+      initializing: 'Подготовка…',
+      busyAnotherTransfer: 'Идёт другая передача',
+      accept: 'Принять',
+      decline: 'Отклонить',
+      cancel: 'Отменить',
+      downloadAria: 'Скачать {name}',
+      cancelled: 'Передача отменена',
+      failed: {
+        sender: 'Не удалось отправить файл. Попробуйте снова.',
+        receiver: 'Не удалось получить файл.',
+      },
+      peerUnavailable: 'У собеседника файлы недоступны',
+      unavailable: 'Файл больше недоступен',
+      sessionCapReached: 'Лимит передачи файлов для сессии исчерпан.',
+      percent: '{percent}%',
+    },
+  },
+  header: {
+    burn: 'Уничтожить сессию',
+    burnShort: 'Уничтожить',
+  },
+  panic: {
+    title: 'Уничтожить сессию',
+    body: 'Это закроет соединение и удалит ключи. Восстановить нельзя. Продолжить?',
+    confirm: 'Уничтожить',
+    cancel: 'Отмена',
+  },
+  langToggle: {
+    label: 'Язык',
+    en: 'EN',
+    ru: 'RU',
+    enName: 'English',
+    ruName: 'Русский',
+  },
+  errors: {
+    duplicateTab: 'Эта сессия уже открыта в другой вкладке.',
+  },
+  md: {
+    tooComplex: 'слишком сложно для отображения',
+  },
+  time: {
+    justNow: 'только что',
+  },
+};

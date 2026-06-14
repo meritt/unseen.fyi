@@ -1,0 +1,70 @@
+{
+  "$comment": [
+    "Test vectors for Unseen v1 file-transfer cryptographic paths. Frozen protocol artifact:",
+    "SHA-256(JSON.stringify(vectors)) is recorded as FROZEN_SHA256_OF_FILE_VECTORS in",
+    "freeze.ts and MUST NOT change in v1. Any change in protocol behavior (algorithms,",
+    "inputs, derivations, wire layout, AAD binding) is a v2 protocol bump.",
+    "",
+    "These vectors complement test-vectors-v1.json by exercising the binary chunk AEAD path",
+    "(kind=0x01) and the AAD-binding property that prevents type confusion between control",
+    "envelopes and file chunks under the same session_key.",
+    "",
+    "All hex values are lowercase. session_key shared with V3 of test-vectors-v1.json."
+  ],
+  "version": "unseen-v1",
+  "vectors": {
+    "v9_chunk_aead": {
+      "$comment": [
+        "AEAD encrypt of a binary file chunk with counter=2, direction=0x01.",
+        "Plaintext layout: [tid:8][seq:u32 LE][data:N]. tid is the transfer identifier",
+        "(8 raw bytes), seq is the chunk sequence number (little-endian u32), data is the",
+        "chunk payload (here 32 sequential bytes 0x00..0x1F for determinism).",
+        "AAD = utf8(\"unseen:v1:\") || 0x01 (RELAY_KIND_CHUNK) — binds chunk-kind into AEAD."
+      ],
+      "session_key_hex": "(session_key from v3_session_key)",
+      "nonce_hex": "010200000000000000000000",
+      "$nonce_layout": "[direction=0x01][LE64(counter=2)=02 00 00 00 00 00 00 00][reserved=00 00 00]",
+      "aad_utf8": "unseen:v1: || 0x01",
+      "aad_hex": "756e7365656e3a76313a01",
+      "tid_hex": "0123456789abcdef",
+      "seq": 0,
+      "seq_hex_le": "00000000",
+      "data_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "data_length_bytes": 32,
+      "plaintext_hex": "0123456789abcdef00000000000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "plaintext_length_bytes": 44,
+      "ciphertext_hex": "128402c12798d9ed64aed25ceeb260f91f00ea3ce3407d732d93dcc78e077cc5921c6257e064b26b56a3183bfa2d0e5cebfe94b16ffb346088f9ce8d",
+      "ciphertext_length_bytes": 60,
+      "auth_tag_hex": "fa2d0e5cebfe94b16ffb346088f9ce8d"
+    },
+    "v10_aad_binding": {
+      "$comment": [
+        "AAD-binding property: the same session_key, nonce, and plaintext under two different",
+        "AADs (aadFor(0x00) for control envelopes vs aadFor(0x01) for binary chunks) MUST",
+        "produce byte-distinct ciphertexts. This prevents type confusion — a peer cannot reuse",
+        "an authenticated chunk ciphertext as a control envelope or vice versa, even if the",
+        "wire kind byte is flipped. The kind byte at frame offset 1 must match the kind bound",
+        "into AAD or AEAD authentication fails."
+      ],
+      "session_key_hex": "(session_key from v3_session_key)",
+      "shared_nonce_hex": "010200000000000000000000",
+      "shared_plaintext_hex": "0123456789abcdef00000000000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "aad_msg_hex": "756e7365656e3a76313a00",
+      "aad_chunk_hex": "756e7365656e3a76313a01",
+      "ciphertext_under_msg_aad_hex": "128402c12798d9ed64aed25ceeb260f91f00ea3ce3407d732d93dcc78e077cc5921c6257e064b26b56a3183baff12c202f2a32c4d961e7b99f544bdb",
+      "ciphertext_under_chunk_aad_hex": "128402c12798d9ed64aed25ceeb260f91f00ea3ce3407d732d93dcc78e077cc5921c6257e064b26b56a3183bfa2d0e5cebfe94b16ffb346088f9ce8d",
+      "property": "ciphertext_under_msg_aad_hex !== ciphertext_under_chunk_aad_hex"
+    }
+  },
+  "$how_to_verify": [
+    "Re-derive every output via Bun Web Crypto:",
+    "  bun test shared/test/file-vectors.test.ts",
+    "",
+    "The test re-encrypts V9 plaintext under V9 nonce/AAD, asserts byte-equality with the",
+    "recorded V9 ciphertext, decrypts back, and verifies the chunk layout decode (tid/seq/data).",
+    "V10 additionally encrypts the same plaintext under aadFor(0x00) and asserts byte-distinct",
+    "ciphertexts to prove the AAD-binding property.",
+    "",
+    "Algorithms: AES-256-GCM via crypto.subtle.encrypt with 12-byte nonce and 16-byte tag."
+  ]
+}

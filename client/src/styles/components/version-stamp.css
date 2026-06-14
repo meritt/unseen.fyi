@@ -1,0 +1,10 @@
+.version-stamp__sha {
+  font-family: var(--font-mono);
+  color: var(--fg-faint);
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+
+.version-stamp__sha:hover {
+  color: var(--accent);
+}

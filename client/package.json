@@ -1,0 +1,10 @@
+{
+  "name": "@unseen/client",
+  "private": true,
+  "description": "Unseen client: Lit SPA with Web Workers",
+  "type": "module",
+  "dependencies": {
+    "@unseen/shared": "workspace:*",
+    "lit": "3.3.3"
+  }
+}

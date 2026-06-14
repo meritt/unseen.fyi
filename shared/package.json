@@ -1,0 +1,12 @@
+{
+  "name": "@unseen/shared",
+  "private": true,
+  "description": "Crypto, wire codec, and frozen protocol artefacts",
+  "type": "module",
+  "exports": {
+    "./*": "./src/*"
+  },
+  "dependencies": {
+    "@noble/hashes": "2.2.0"
+  }
+}

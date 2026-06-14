@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta name="robots" content="noindex,nofollow">
+  <meta name="theme-color" content="#efeee9">
+  <link href="/favicon.svg" rel="icon" type="image/svg+xml">
+  <title>peer@unseen ~ $ wait</title>
+  <!--STYLES-->
+  <!--BUNDLE-->
+</head>
+
+<body>
+  <main class="chat" data-state="CONNECTING">
+    <h1 class="sr-only">Unseen — private chat</h1>
+    <header class="chat-header">
+      <a class="chat-header__brand" href="/" data-testid="brand-home">
+        <svg class="chat-header__brand-svg" viewBox="0 0 1000 320" role="img" aria-label="{{landing.title}}"
+          xmlns="http://www.w3.org/2000/svg"></svg>
+      </a>
+      <div class="language-toggle" role="group" aria-label="{{langToggle.label}}">
+        <button data-testid="lang-en" type="button" lang="en" aria-label="{{langToggle.enName}}"
+          aria-pressed="true">en</button>
+        <button data-testid="lang-ru" type="button" lang="ru" aria-label="{{langToggle.ruName}}"
+          aria-pressed="false">ру</button>
+      </div>
+    </header>
+    <div class="chat__card">
+      <div class="chat__card-top">
+        <span class="chat__sas chat__sas--placeholder"></span>
+      </div>
+      <hr class="chat__card-divider">
+      <div class="chat__placeholder" data-testid="chat-placeholder" role="status" aria-live="polite">
+        {{chat.placeholder.connecting}}</div>
+      <ul class="chat__feed" data-testid="messages" role="log" aria-live="polite" aria-relevant="additions">
+        <li class="chat__sentinel" data-testid="feed-sentinel" aria-hidden="true"></li>
+      </ul>
+      <div class="composer">
+        <div class="composer__row">
+          <button class="composer__attach" data-testid="composer-attach" type="button"
+            aria-label="{{chat.fileTransfer.attachAria}}" disabled>📎</button>
+          <textarea class="composer__field" data-testid="composer" name="message" rows="1"
+            aria-label="{{chat.composerPlaceholder}}" placeholder="{{chat.composerPlaceholder}}"></textarea>
+          <button class="composer__send" data-testid="send" type="button" disabled>{{chat.sendButton}}</button>
+        </div>
+      </div>
+    </div>
+    <footer class="chat__footer">
+      <span class="chat__signal">
+        <svg class="chat__signal-icon" viewBox="0 0 20 20" aria-hidden="true">
+          <rect x="4.5" y="9" width="11" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4">
+          </rect>
+          <path d="M7 9V6.5a3 3 0 0 1 6 0V9" fill="none" stroke="currentColor" stroke-width="1.4"
+            stroke-linecap="round"></path>
+        </svg>
+        <span>{{landing.signalEncrypted}}</span>
+      </span>
+      <span class="chat__signal-sep" aria-hidden="true">|</span>
+      <span class="chat__signal">
+        <svg class="chat__signal-icon" viewBox="0 0 20 20" aria-hidden="true">
+          <circle cx="10" cy="10" r="6.5" fill="none" stroke="currentColor" stroke-width="1.4"></circle>
+          <path d="M10 6.5V10l2.5 1.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"
+            stroke-linejoin="round"></path>
+        </svg>
+        <span>{{landing.signalOneTime}}</span>
+      </span>
+    </footer>
+    <span class="sr-only" data-testid="status" data-state="CONNECTING">CONNECTING</span>
+  </main>
+</body>
+
+</html>

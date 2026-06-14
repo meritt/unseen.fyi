@@ -1,0 +1,9 @@
+{
+  "name": "@unseen/server",
+  "private": true,
+  "description": "Unseen relay: Bun.serve room registry, rate limiting and static serving",
+  "type": "module",
+  "dependencies": {
+    "@unseen/shared": "workspace:*"
+  }
+}

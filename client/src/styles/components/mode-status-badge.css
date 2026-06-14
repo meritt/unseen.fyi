@@ -1,0 +1,20 @@
+.mode-status-badge {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  inline-size: 32px;
+  block-size: 32px;
+  color: var(--fg-faint);
+  background: transparent;
+  border-radius: 50%;
+}
+
+.mode-status-badge svg {
+  inline-size: 16px;
+  block-size: 16px;
+}
+
+.mode-status-badge--hardened {
+  color: var(--accent);
+}

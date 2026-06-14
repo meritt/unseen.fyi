@@ -1,0 +1,58 @@
+.burn-button {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 14px;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--danger);
+  background: transparent;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-full);
+  transition:
+    color var(--transition-fast),
+    background var(--transition-fast);
+}
+
+.burn-button:hover {
+  background: var(--danger-soft);
+}
+
+.burn-button--armed {
+  color: var(--accent-fg);
+  background: var(--danger);
+}
+
+.burn-button--armed:hover {
+  background: var(--danger-strong);
+}
+
+.burn-button__icon {
+  flex: none;
+  inline-size: 16px;
+  block-size: 16px;
+}
+
+.burn-button__label--short {
+  display: none;
+}
+
+@container chat (width < 600px) {
+  .burn-button__label--full {
+    display: none;
+  }
+
+  .burn-button__label--short {
+    display: inline;
+  }
+}
+
+@container chat (width < 380px) {
+  .burn-button__label--short {
+    display: none;
+  }
+
+  .burn-button:not(.burn-button--armed) {
+    padding: 6px 10px;
+  }
+}

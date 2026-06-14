@@ -1,0 +1,46 @@
+.upgrade-button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 6px;
+  align-items: center;
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  white-space: nowrap;
+  color: var(--fg-faint);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-md);
+  transition:
+    color var(--transition-fast),
+    background var(--transition-fast),
+    transform var(--transition-press);
+}
+
+.upgrade-button:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.upgrade-button:active svg {
+  transform: scale(0.9);
+}
+
+.upgrade-button__icon {
+  flex: none;
+  inline-size: 14px;
+  block-size: 14px;
+  transition: transform var(--transition-press);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .upgrade-button {
+    transition:
+      color var(--transition-fast),
+      background var(--transition-fast);
+  }
+
+  .upgrade-button:active svg {
+    transform: none;
+  }
+}

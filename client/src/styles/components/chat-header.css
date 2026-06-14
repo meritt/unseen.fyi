@@ -1,0 +1,25 @@
+.chat-header {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) calc(var(--space-6) + 1px);
+}
+
+.chat-header__brand {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+  color: inherit;
+  transition: transform var(--transition-fast);
+}
+
+.chat-header__brand-svg {
+  display: block;
+  inline-size: auto;
+  block-size: 32px;
+}
+
+.chat-header__brand:hover {
+  transform: translateY(-1px);
+}

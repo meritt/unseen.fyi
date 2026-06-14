@@ -1,0 +1,171 @@
+{
+  "$comment": [
+    "Test vectors for Unseen v1 cryptographic protocol. Frozen protocol artifact:",
+    "SHA-256(JSON.stringify(vectors)) is recorded as FROZEN_SHA256_OF_VECTORS in",
+    "shared/src/protocol/freeze.ts and MUST NOT change. Any change in protocol behavior",
+    "(algorithms, inputs, derivations, wire layout) requires a protocol version bump and",
+    "deliberate update of the pinned hash.",
+    "",
+    "All hex values are lowercase. All HKDF derivations use SHA-256.",
+    "Validation and rehash: run bun:test for shared (the protocol-freeze suite recomputes",
+    "the hashes and asserts byte-equality against freeze.ts)."
+  ],
+  "version": "unseen-v1",
+  "vectors": {
+    "v1_hkdf_derivation": {
+      "$comment": "HKDF-SHA256 derivation from URL fragment secret. salt=empty (0 bytes); RFC 5869 then substitutes a 32-byte zero salt internally.",
+      "secret_hex": "4242424242424242424242424242424242424242424242424242424242424242",
+      "salt": "(empty 0 bytes)",
+      "outputs": {
+        "roomId_info": "unseen:v1:roomId",
+        "roomId_length": 16,
+        "roomId_hex": "29fa0ec3ddfa3ba8f2674019c5fc1f7d",
+        "handshake_key_info": "unseen:v1:handshake",
+        "handshake_key_length": 32,
+        "handshake_key_hex": "b24d911fb25f6910a1a8823c420b574fbfe179450d231e738ce60aa2c3fe8929",
+        "sas_anchor_info": "unseen:v1:sas-anchor",
+        "sas_anchor_length": 32,
+        "sas_anchor_hex": "5d6508d8c924493604a92855a4632f5bc0dd42bdb3ce3972712955b21c981f97",
+        "storage_info": "unseen:v1:storage",
+        "storage_length": 8,
+        "storageKey_b64url": "zIgxms81mNA",
+        "lock_info": "unseen:v1:lock",
+        "lock_length": 8,
+        "lockKey_b64url": "Zf4HMU9eGPc",
+        "prf_salt_info": "unseen:v1:prf-salt",
+        "prf_salt_length": 32,
+        "prf_salt_hex": "029610a05cd9de087c4f715acdf87606239ba5b6fb4b76578ad6aa42bf52ecee",
+        "opfs_dir_info": "unseen:v1:opfs:transfers",
+        "opfs_dir_length": 8,
+        "opfs_dir_b64url": "yJIdNfNX9O0"
+      }
+    },
+    "v2_x25519": {
+      "$comment": "RFC 7748 §6.1 reference vectors. Public, fixed. Anchored to the RFC 7748 §6.1 constants AND re-derived from private scalars (pub = X25519(priv, base), ECDH both directions) in validate-test-vectors.test.ts.",
+      "alice_priv_hex": "77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a",
+      "alice_pub_hex": "8520f0098930a754748b7ddcb43ef75a0dbf3a0d26381af4eba4a98eaa9b4e6a",
+      "bob_priv_hex": "5dab087e624a8a4b79e17f8b83800ee66f3bb1292618b6fd1c2f8b27ff88e0eb",
+      "bob_pub_hex": "de9edb7d7b7dc1b4d35b61c2ece435373f8343c85b78674dadfc7e146f882b4f",
+      "shared_secret_hex": "4a5d9d5ba4ce2de1728e3bf480350f25e07e21c947d19e3376f09b3c1e161742"
+    },
+    "v3_session_key": {
+      "$comment": [
+        "session_key derived from shared + sas_anchor with canonical transcript.",
+        "Canonical transcript ordering: bytes-lexicographic sort of [alice_pub, bob_pub].",
+        "alice_pub starts with 0x85, bob_pub starts with 0xde → alice_pub < bob_pub.",
+        "Therefore transcript = alice_pub || bob_pub (lower byte sequence first).",
+        "HKDF info = utf8(info_prefix) || transcript (21 + 64 = 85 bytes)."
+      ],
+      "transcript_first_pub_hex": "8520f0098930a754748b7ddcb43ef75a0dbf3a0d26381af4eba4a98eaa9b4e6a",
+      "transcript_second_pub_hex": "de9edb7d7b7dc1b4d35b61c2ece435373f8343c85b78674dadfc7e146f882b4f",
+      "info_prefix": "unseen:v1:session-key",
+      "ikm_hex": "(shared_secret from v2_x25519)",
+      "salt_hex": "(sas_anchor from v1_hkdf_derivation)",
+      "session_key_length": 32,
+      "session_key_hex": "d49e561dbc630ffac827d495472e9b41d960cc4b9e3a3f0744f162ce368294bb"
+    },
+    "v4_sas_bytes": {
+      "$comment": "SAS bytes derived from session_key + sas_anchor. 5 bytes interpreted as uint8 each, indexing sas-emoji-v1.json pool.",
+      "ikm_hex": "(session_key from v3_session_key)",
+      "salt_hex": "(sas_anchor from v1_hkdf_derivation)",
+      "info": "unseen:v1:sas",
+      "length": 5,
+      "sas_bytes_hex": "52d31abab8",
+      "sas_emoji_indices": [82, 211, 26, 186, 184]
+    },
+    "v5_aes_gcm_message": {
+      "$comment": "AEAD encrypt of a sample v2 envelope with counter=1, direction=0x01. v2 envelope drops the `v` field and orders properties as `kind,body,t`. AAD = utf8(\"unseen:v1:\") || 0x00 (RELAY_KIND_MSG) — 11 bytes — binds the frame kind into the AEAD so a flipped kind byte fails authentication.",
+      "session_key_hex": "(session_key from v3_session_key)",
+      "nonce_hex": "010100000000000000000000",
+      "$nonce_layout": "[direction=0x01][LE64(counter=1)=01 00 00 00 00 00 00 00][reserved=00 00 00]",
+      "aad_utf8": "unseen:v1: || 0x00",
+      "aad_hex": "756e7365656e3a76313a00",
+      "plaintext_utf8": "{\"kind\":\"msg\",\"body\":\"hi\",\"t\":\"2026-05-12T00:00:00.000Z\"}",
+      "plaintext_hex": "7b226b696e64223a226d7367222c22626f6479223a226869222c2274223a22323032362d30352d31325430303a30303a30302e3030305a227d",
+      "ciphertext_hex": "4353d3968a19574f7e104a3ff30df9084704e51a03b02838d97b5d0e3e55edef8d6b28920fe9f07cf06ec63b650279f17e641853abd3005eaa6aa12fa3693f09dc60c102e432aefe67",
+      "auth_tag_hex": "6aa12fa3693f09dc60c102e432aefe67"
+    },
+    "v6_wire_format": {
+      "$comment": "Full binary RELAY frame for the v2 message from v5. v2 layout: [0x05 MSG_RELAY][kind:1][nonce:12][ct_len:u16 LE][ciphertext]. The kind byte at offset 1 distinguishes plaintext envelopes (0x00) from binary file chunks (0x01) and is bound into the AEAD AAD.",
+      "type_byte_hex": "05",
+      "kind_byte_hex": "00",
+      "nonce_hex": "(from v5)",
+      "ct_len_hex_le": "4900",
+      "ciphertext_hex": "(from v5)",
+      "full_frame_hex": "050001010000000000000000000049004353d3968a19574f7e104a3ff30df9084704e51a03b02838d97b5d0e3e55edef8d6b28920fe9f07cf06ec63b650279f17e641853abd3005eaa6aa12fa3693f09dc60c102e432aefe67",
+      "full_frame_length_bytes": 89
+    },
+    "v7_handshake_encrypt": {
+      "$comment": [
+        "AES-256-GCM encrypt of an ephemeral X25519 public key with handshake_key (V1) and",
+        "aad = utf8(\"unseen:v1:handshake\"). Plaintext = alice_pub from V2 (RFC 7748 §6.1).",
+        "Nonce is a fixed test value, not the runtime randomly-generated one — this is purely",
+        "for cross-implementation byte-equality verification of the handshake encrypt path."
+      ],
+      "handshake_key_hex": "(handshake_key from v1_hkdf_derivation)",
+      "nonce_hex": "010000000000000000000000",
+      "aad_utf8": "unseen:v1:handshake",
+      "aad_hex": "756e7365656e3a76313a68616e647368616b65",
+      "plaintext_utf8": "(alice_pub from v2_x25519, 32 raw bytes)",
+      "plaintext_hex": "8520f0098930a754748b7ddcb43ef75a0dbf3a0d26381af4eba4a98eaa9b4e6a",
+      "ciphertext_hex": "e666aa8d09267698111ae3d342b251d956b1be16c9eaa22f50d83fe4fa7d50e8e7bd055706211198de5aa553d9636bc5",
+      "ciphertext_length_bytes": 48,
+      "auth_tag_hex": "e7bd055706211198de5aa553d9636bc5"
+    },
+    "v8_wrap_key_derivation": {
+      "$comment": [
+        "PRF-mode wrap_key derivation. HKDF-SHA256 with prf_output as IKM, empty salt,",
+        "info = utf8(\"unseen:v1:wrap\") || roomId_bytes (16 raw bytes from V1, NOT hex).",
+        "prf_output here is a fixed test fixture (0xCC × 32) standing in for the value",
+        "returned by an authenticator's PRF extension at runtime. This vector locks in the",
+        "exact concatenation format (raw bytes, not hex) and salt semantics (empty buffer)."
+      ],
+      "prf_output_hex": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "prf_output_length_bytes": 32,
+      "salt": "(empty 0 bytes)",
+      "info_prefix_utf8": "unseen:v1:wrap",
+      "info_prefix_hex": "756e7365656e3a76313a77726170",
+      "info_prefix_length_bytes": 14,
+      "roomId_hex": "(roomId from v1_hkdf_derivation, 16 raw bytes)",
+      "info_hex": "756e7365656e3a76313a7772617029fa0ec3ddfa3ba8f2674019c5fc1f7d",
+      "info_length_bytes": 30,
+      "wrap_key_length": 32,
+      "wrap_key_hex": "cf5b679a257584ab430ccaebdceae0aa085d0a61e72e94be26fa40ab03aaa97c"
+    },
+    "v11_rekeyed_session_key": {
+      "$comment": [
+        "PRF+PRF hardened rekey. Both peers generate fresh X25519 pairs, exchange pubs over",
+        "the encrypted RELAY channel, and derive a new session_key. Unlike V3 the HKDF info is",
+        "the bare constant utf8(\"unseen:v1:rekeyed-session-key\") with NO transcript; salt is the",
+        "same sas_anchor from V1. Keys here are fixed test fixtures (initiator_priv=0x11*32,",
+        "joiner_priv=0x22*32) standing in for runtime-random ephemerals, locking in the byte",
+        "output of the rekey derivation for cross-implementation verification."
+      ],
+      "initiator_priv_hex": "1111111111111111111111111111111111111111111111111111111111111111",
+      "initiator_pub_hex": "7b4e909bbe7ffe44c465a220037d608ee35897d31ef972f07f74892cb0f73f13",
+      "joiner_priv_hex": "2222222222222222222222222222222222222222222222222222222222222222",
+      "joiner_pub_hex": "0faa684ed28867b97f4a6a2dee5df8ce974e76b7018e3f22a1c4cf2678570f20",
+      "shared_secret_hex": "9e004098efc091d4ec2663b4e9f5cfd4d7064571690b4bea97ab146ab9f35056",
+      "salt_hex": "(sas_anchor from v1_hkdf_derivation)",
+      "info": "unseen:v1:rekeyed-session-key",
+      "rekeyed_session_key_length": 32,
+      "rekeyed_session_key_hex": "d8ea28922454dcca7a42a33066a80f09c919a62c370e25d92d350170477c65df"
+    }
+  },
+  "$how_to_verify": [
+    "Run the shared workspace tests: `bun test shared`. The protocol-freeze suite re-hashes",
+    "JSON.stringify(vectors) and asserts it equals FROZEN_SHA256_OF_VECTORS in",
+    "shared/src/protocol/freeze.ts. The crypto-vectors suite re-derives every output via Bun",
+    "Web Crypto and asserts byte-equality with the values stored above.",
+    "",
+    "Algorithms:",
+    "  HKDF-SHA256 — crypto.subtle.deriveBits with { name: 'HKDF', hash: 'SHA-256', salt, info }",
+    "  X25519      — V2 is RFC 7748 §6.1 reference, anchored to the RFC constants and re-derived",
+    "                from private scalars (pub from priv, ECDH from scalars) in validate-test-vectors.test.ts",
+    "  AES-256-GCM — crypto.subtle.encrypt with { name: 'AES-GCM', iv, additionalData }, 16-byte tag",
+    "",
+    "Independent verification (optional): re-compute any output with an unrelated tool",
+    "(OpenSSL CLI, Python cryptography, libsodium, etc.) using the same inputs. Bytes",
+    "must match — these are protocol invariants."
+  ]
+}

@@ -1,0 +1,222 @@
+.composer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  align-items: stretch;
+  padding: var(--space-3) var(--space-6);
+  background: var(--bg-elevated);
+  border-block-start: 1px solid var(--border);
+  transition: border-color var(--transition-fast);
+}
+
+.composer:focus-within {
+  border-block-start-color: var(--accent);
+}
+
+.composer__row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: stretch;
+  inline-size: 100%;
+}
+
+.composer__field {
+  flex: 1;
+  min-block-size: 2.5rem;
+  max-block-size: 8rem;
+  field-sizing: content;
+  padding: var(--space-2) 0;
+  font-family: inherit;
+  font-size: var(--text-base);
+  line-height: var(--line-snug);
+  color: var(--fg);
+  caret-color: var(--accent);
+  caret-shape: block;
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: none;
+}
+
+.composer__field:placeholder-shown {
+  caret-shape: auto;
+}
+
+.composer__field::placeholder {
+  color: var(--fg-faint);
+}
+
+.composer__field:disabled {
+  cursor: not-allowed;
+}
+
+.composer__send {
+  flex: none;
+  padding: var(--space-2) var(--space-5);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--accent-fg);
+  background: var(--accent);
+  border-radius: var(--radius-full);
+  transition:
+    color var(--transition-fast),
+    background var(--transition-fast);
+}
+
+.composer__send:hover:not(:disabled) {
+  background: var(--accent-strong);
+}
+
+.composer__send:disabled {
+  color: var(--fg-disabled);
+  background: var(--surface-disabled);
+  cursor: not-allowed;
+}
+
+@keyframes composer-send-nudge {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+
+  50% {
+    box-shadow: 0 0 0 6px color-mix(in oklch, var(--accent) 18%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .composer__send:not(:disabled) {
+    animation: composer-send-nudge 3.2s ease-in-out 5s infinite;
+  }
+
+  .composer:focus-within .composer__send,
+  .composer__send:hover,
+  .composer__send:active {
+    animation-play-state: paused;
+  }
+}
+
+.composer__file {
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+  margin: 0;
+  padding: var(--space-1) var(--space-6) 0;
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .composer__file {
+    transition:
+      opacity var(--transition-fast) ease,
+      transform var(--transition-fast) ease;
+  }
+
+  @starting-style {
+    .composer__file {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+  }
+}
+
+.composer__file-name {
+  min-inline-size: 0;
+  max-inline-size: 24ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg);
+}
+
+.composer__file-size {
+  flex: none;
+  color: var(--fg-muted);
+}
+
+.composer__file-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 44px;
+  block-size: 44px;
+  margin-inline-start: var(--space-1);
+  padding: 0;
+  color: var(--fg-faint);
+  background: transparent;
+  border: none;
+  border-radius: 50%;
+  transition:
+    color var(--transition-fast),
+    background var(--transition-fast),
+    transform var(--transition-press);
+}
+
+.composer__file-remove svg {
+  inline-size: 14px;
+  block-size: 14px;
+  transition: transform var(--transition-press);
+}
+
+.composer__file-remove:hover {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.composer__file-remove:active svg {
+  transform: scale(0.9);
+}
+
+.composer__attach {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  align-self: center;
+  justify-content: center;
+  inline-size: 44px;
+  block-size: 44px;
+  padding: 0;
+  color: var(--fg-muted);
+  background: transparent;
+  border: none;
+  border-radius: 50%;
+  transition:
+    color var(--transition-fast),
+    background var(--transition-fast),
+    transform var(--transition-press);
+}
+
+.composer__attach svg {
+  inline-size: 18px;
+  block-size: 18px;
+  transition: transform var(--transition-press);
+}
+
+.composer__attach:hover:not(:disabled) {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.composer__attach:active:not(:disabled) svg {
+  transform: scale(0.9);
+}
+
+.composer__attach:disabled {
+  color: var(--fg-disabled);
+  cursor: not-allowed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .composer__file-remove,
+  .composer__attach {
+    transition:
+      color var(--transition-fast),
+      background var(--transition-fast);
+  }
+
+  .composer__file-remove:active svg,
+  .composer__attach:active:not(:disabled) svg {
+    transform: none;
+  }
+}

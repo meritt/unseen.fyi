@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /r402
+
+Sitemap: https://unseen.fyi/sitemap.xml
