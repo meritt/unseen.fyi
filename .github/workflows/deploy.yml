@@ -118,8 +118,7 @@ jobs:
         env:
           SHA: ${{ steps.meta.outputs.sha }}
         run: |
-          tar --zstd -cf "unseen-${SHA}.tar.zst" \
-            shared server client/dist node_modules package.json
+          tar --zstd --exclude='shared/test' --exclude='server/test' -cf "unseen-${SHA}.tar.zst" shared server client/dist node_modules package.json
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
