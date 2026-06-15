@@ -130,7 +130,7 @@ export class LandingView extends LitElement {
       <main class="landing">
         <div class="landing__inner">
           <h1 class="landing__logo" data-testid="landing-logo">
-            <span class="sr-only">Unseen — private chat</span>
+            <span class="sr-only">Unseen — end-to-end encrypted one-on-one chat</span>
             <svg viewBox=${LOGO_VIEW_BOX} class="landing__logo-svg" aria-hidden="true">
               ${this.#logoSvgInner === undefined ? nothing : unsafeSVG(this.#logoSvgInner)}
             </svg>

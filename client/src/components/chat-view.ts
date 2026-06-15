@@ -985,7 +985,7 @@ export class ChatView extends LitElement {
         data-mode=${sessionMode.value}
         @upgrade-requested=${this.#onUpgradeRequested}
       >
-        <h1 class="sr-only">Unseen — private chat</h1>
+        <h1 class="sr-only">Unseen — end-to-end encrypted one-on-one chat</h1>
         <chat-header .prfCapable=${this.#prfCapable}></chat-header>
         <div class="chat__card">
           <div class="chat__card-top">
