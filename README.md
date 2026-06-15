@@ -10,6 +10,12 @@ So the constraints are deliberate. One UI dependency (`lit`, for declarative ren
 
 It targets the current release of each engine: **Chrome 149, Firefox 151, Safari 26.5**. Many of the APIs below did not exist, or were not interoperable across all three, a year ago. That is the point.
 
+## Status and intended use
+
+Unseen is a technical demonstration, not a product. It is provided **as is, without warranty**, for evaluation and educational purposes, and may change or be taken down at any time. Do not rely on it for communications where loss or unavailability would cause harm. It **must not be used for unlawful purposes**.
+
+The design retains as little as possible. The relay holds no database, no accounts, and no message history; it forwards opaque ciphertext that it cannot read. The site sets no cookies and runs no analytics. The source is public and may be self-hosted, and anyone who deploys an instance is responsible for operating it lawfully. Security issues can be reported as described in [`SECURITY.md`](SECURITY.md).
+
 ## Web platform capabilities
 
 **Identity and cryptography**
