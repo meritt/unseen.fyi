@@ -1,31 +1,6 @@
-import { type BrowserContext, type CDPSession, expect, type Page, test } from '@playwright/test';
+import { type BrowserContext, expect, type Page, test } from '@playwright/test';
 
-type AuthenticatorOptions = {
-  readonly hasPrf?: boolean;
-  readonly isUserVerified?: boolean;
-};
-
-type VirtualAuth = { readonly cdp: CDPSession; readonly authenticatorId: string };
-
-const enableVirtualAuthenticator = async (
-  page: Page,
-  options: AuthenticatorOptions = {},
-): Promise<VirtualAuth> => {
-  const cdp = await page.context().newCDPSession(page);
-  await cdp.send('WebAuthn.enable');
-  const { authenticatorId } = (await cdp.send('WebAuthn.addVirtualAuthenticator', {
-    options: {
-      protocol: 'ctap2',
-      transport: 'internal',
-      hasResidentKey: true,
-      hasUserVerification: true,
-      isUserVerified: options.isUserVerified ?? true,
-      hasPrf: options.hasPrf ?? true,
-      automaticPresenceSimulation: true,
-    },
-  })) as { authenticatorId: string };
-  return { cdp, authenticatorId };
-};
+import { enableVirtualAuthenticator } from './fixtures/webauthn';
 
 const closeAll = async (...contexts: readonly BrowserContext[]): Promise<void> => {
   await Promise.all(contexts.map(async (ctx) => await ctx.close()));
@@ -419,8 +394,7 @@ test('signal-called-on-clean-terminate-prf: panic in PRF-mode invokes signalUnkn
     await alice.getByTestId('burn-button').click();
     await alice.getByTestId('burn-button').click();
     await alice.waitForURL((url) => url.pathname === '/', { timeout: 5000 });
-    await alice.waitForTimeout(200);
-    expect(signalCalled).toBe(1);
+    await expect.poll(() => signalCalled).toBe(1);
   } finally {
     await closeAll(aliceContext, bobContext);
   }
@@ -589,7 +563,12 @@ test('signal-order-invariant: WS close fires before signalUnknownCredential befo
     await alice.getByTestId('burn-button').click();
     await alice.getByTestId('burn-button').click();
     await alice.waitForURL((url) => url.pathname === '/', { timeout: 5000 });
-    await alice.waitForTimeout(200);
+    await expect
+      .poll(() => {
+        const events = new Set(order.map((entry) => entry.event));
+        return events.has('wsClose') && events.has('signal') && events.has('removeItem');
+      })
+      .toBe(true);
 
     const find = (event: string): number =>
       order.find((entry) => entry.event === event)?.time ?? Number.POSITIVE_INFINITY;
