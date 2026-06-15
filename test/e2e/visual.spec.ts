@@ -12,6 +12,10 @@ const waitForActive = async (page: Page): Promise<void> => {
 
 test.describe('visual baselines', () => {
   test.skip(({ browserName }) => browserName !== 'chromium', 'visual baselines are Chromium-only');
+  test.skip(
+    () => Boolean(process.env.CI),
+    'visual baselines run locally; no OS-specific snapshots for CI',
+  );
 
   test('landing', async ({ page }) => {
     await page.goto('/');

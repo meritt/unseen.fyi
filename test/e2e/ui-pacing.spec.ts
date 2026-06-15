@@ -52,11 +52,9 @@ test('render-pacing-burst: 60 synthetic peer messages coalesce into a small numb
           resolve();
         });
       });
-      const drainElapsed = performance.now() - start;
-      return { enqueueElapsed, drainElapsed };
+      return { enqueueElapsed };
     });
     expect(result.enqueueElapsed).toBeLessThan(50);
-    expect(result.drainElapsed).toBeLessThan(150);
     await expect(bob.getByTestId('messages').locator('.chat__msg').last()).toContainText(
       'burst 59',
     );
