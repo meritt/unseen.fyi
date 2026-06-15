@@ -28,6 +28,7 @@ jobs:
         with:
           ref: ${{ inputs.sha || github.sha }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: refuse non-main dispatch ref
         if: ${{ inputs.sha != '' }}
