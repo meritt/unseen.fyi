@@ -15,7 +15,7 @@
   --danger-strong: color-mix(in oklch, var(--danger) 65%, #000000);
 
   --surface-disabled: oklch(87% 0 0);
-  --fg-disabled: oklch(62% 0 0);
+  --fg-disabled: oklch(46% 0 0);
 
   --border: oklch(90% 0.008 80);
   --border-strong: oklch(82% 0.012 80);
