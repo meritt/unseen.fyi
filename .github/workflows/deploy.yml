@@ -17,20 +17,20 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  validate:
-    name: validate
+  verify:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           ref: ${{ inputs.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
 
-      - name: refuse non-main dispatch ref
+      - name: Guard
         if: ${{ inputs.sha != '' }}
         env:
           REQ_SHA: ${{ inputs.sha }}
@@ -45,24 +45,30 @@ jobs:
             exit 1
           fi
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - name: Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: package.json
-      - uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      - name: Cache
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
           restore-keys: |
             bun-${{ runner.os }}-
-      - run: bun install --frozen-lockfile
-      - run: bun run format:check
-      - run: bun run lint --format=github
-      - run: bun run typecheck
-      - run: bun run test
+      - name: Install
+        run: bun install --frozen-lockfile
+      - name: Format
+        run: bun run format:check
+      - name: Lint
+        run: bun run lint --format=github
+      - name: Typecheck
+        run: bun run typecheck
+      - name: Test
+        run: bun run test
 
   build:
-    name: build release
-    needs: validate
+    needs: verify
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -70,13 +76,14 @@ jobs:
     outputs:
       sha: ${{ steps.meta.outputs.sha }}
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           ref: ${{ inputs.sha || github.sha }}
           persist-credentials: false
 
       - id: meta
-        name: capture + validate
+        name: SHA
         run: |
           sha="$(git rev-parse HEAD)"
           if ! [[ "${sha}" =~ ^[0-9a-f]{40}$ ]]; then
@@ -85,65 +92,68 @@ jobs:
           fi
           echo "sha=${sha}" >> "$GITHUB_OUTPUT"
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - name: Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: package.json
 
-      - uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      - name: Cache
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
           restore-keys: |
             bun-${{ runner.os }}-
 
-      - name: install all deps
+      - name: Install
         run: bun install --frozen-lockfile
 
-      - name: client build
+      - name: Client
         env:
           NODE_ENV: production
           UNSEEN_WS_URL: /ws
           UNSEEN_RELEASE_SHA: ${{ steps.meta.outputs.sha }}
         run: bun run build:client
 
-      - name: bundle size budget
+      - name: Budget
         run: bun run test/perf/bundle-size.ts
 
-      - name: prune to production
+      - name: Prune
         run: |
           rm -rf node_modules
           bun install --frozen-lockfile --production
 
-      - name: pack release
+      - name: Pack
         env:
           SHA: ${{ steps.meta.outputs.sha }}
         run: |
           tar --zstd --exclude='shared/test' --exclude='server/test' -cf "unseen-${SHA}.tar.zst" shared server client/dist node_modules package.json
 
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - name: Upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: unseen-release
+          name: release
           path: unseen-*.tar.zst
           if-no-files-found: error
           retention-days: 1
 
-  deploy:
-    name: ship + restart
+  ship:
     needs: build
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     environment: production
     steps:
-      - name: mask in logs
+      - name: Mask
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
         run: echo "::add-mask::${SSH_HOST}"
 
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - name: Download
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: unseen-release
+          name: release
 
-      - name: configure
+      - name: SSH
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
           SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
@@ -166,7 +176,7 @@ jobs:
           EOF
           chmod 600 ~/.ssh/config
 
-      - name: upload
+      - name: Stage
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_PORT: ${{ secrets.SSH_PORT }}
@@ -176,7 +186,7 @@ jobs:
         run: |
           ssh -p "$SSH_PORT" "${SSH_USER}@${SSH_HOST}" -- "cat > ${SSH_APP_PATH}/unseen-${SHA}.tar.zst" < "unseen-${SHA}.tar.zst"
 
-      - name: deploy
+      - name: Release
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_PORT: ${{ secrets.SSH_PORT }}
@@ -185,6 +195,6 @@ jobs:
         run: |
           ssh -p "$SSH_PORT" "${SSH_USER}@${SSH_HOST}" -- "deploy ${SHA}"
 
-      - name: cleanup
+      - name: Cleanup
         if: always()
         run: rm -f ~/.ssh/id_ed25519
