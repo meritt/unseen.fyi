@@ -238,6 +238,7 @@
     "unicorn/explicit-length-check": "error",
     "unicorn/filename-case": ["error", { "case": "kebabCase" }],
     "unicorn/no-abusive-eslint-disable": "error",
+    "unicorn/no-array-fill-with-reference-type": "error",
     "unicorn/no-array-for-each": "error",
     "unicorn/no-document-cookie": "error",
     "unicorn/no-empty-file": "error",
