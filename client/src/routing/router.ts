@@ -16,7 +16,7 @@ export const parseLocation = (location: Location): Route => {
   if (pathname !== '/r402') {
     return { kind: 'invalid' };
   }
-  if (hash.length !== HASH_LENGTH || hash[0] !== '#') {
+  if (hash.length !== HASH_LENGTH || !hash.startsWith('#')) {
     return { kind: 'invalid' };
   }
   try {
