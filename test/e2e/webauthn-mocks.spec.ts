@@ -394,8 +394,7 @@ test('signal-called-on-clean-terminate-prf: panic in PRF-mode invokes signalUnkn
     await alice.getByTestId('burn-button').click();
     await alice.getByTestId('burn-button').click();
     await alice.waitForURL((url) => url.pathname === '/', { timeout: 5000 });
-    await alice.waitForTimeout(200);
-    expect(signalCalled).toBe(1);
+    await expect.poll(() => signalCalled).toBe(1);
   } finally {
     await closeAll(aliceContext, bobContext);
   }
@@ -564,7 +563,12 @@ test('signal-order-invariant: WS close fires before signalUnknownCredential befo
     await alice.getByTestId('burn-button').click();
     await alice.getByTestId('burn-button').click();
     await alice.waitForURL((url) => url.pathname === '/', { timeout: 5000 });
-    await alice.waitForTimeout(200);
+    await expect
+      .poll(() => {
+        const events = new Set(order.map((entry) => entry.event));
+        return events.has('wsClose') && events.has('signal') && events.has('removeItem');
+      })
+      .toBe(true);
 
     const find = (event: string): number =>
       order.find((entry) => entry.event === event)?.time ?? Number.POSITIVE_INFINITY;
