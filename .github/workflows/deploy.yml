@@ -171,11 +171,10 @@ jobs:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_PORT: ${{ secrets.SSH_PORT }}
           SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_APP_PATH: ${{ secrets.SSH_APP_PATH }}
           SHA: ${{ needs.build.outputs.sha }}
         run: |
-          ssh -p "$SSH_PORT" "${SSH_USER}@${SSH_HOST}" -- \
-            "cat > /var/www/unseen.fyi/releases/.incoming/unseen-${SHA}.tar.zst" \
-            < "unseen-${SHA}.tar.zst"
+          ssh -p "$SSH_PORT" "${SSH_USER}@${SSH_HOST}" -- "cat > ${SSH_APP_PATH}/unseen-${SHA}.tar.zst" < "unseen-${SHA}.tar.zst"
 
       - name: deploy
         env:
