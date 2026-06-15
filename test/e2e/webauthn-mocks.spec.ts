@@ -1,31 +1,6 @@
-import { type BrowserContext, type CDPSession, expect, type Page, test } from '@playwright/test';
+import { type BrowserContext, expect, type Page, test } from '@playwright/test';
 
-type AuthenticatorOptions = {
-  readonly hasPrf?: boolean;
-  readonly isUserVerified?: boolean;
-};
-
-type VirtualAuth = { readonly cdp: CDPSession; readonly authenticatorId: string };
-
-const enableVirtualAuthenticator = async (
-  page: Page,
-  options: AuthenticatorOptions = {},
-): Promise<VirtualAuth> => {
-  const cdp = await page.context().newCDPSession(page);
-  await cdp.send('WebAuthn.enable');
-  const { authenticatorId } = (await cdp.send('WebAuthn.addVirtualAuthenticator', {
-    options: {
-      protocol: 'ctap2',
-      transport: 'internal',
-      hasResidentKey: true,
-      hasUserVerification: true,
-      isUserVerified: options.isUserVerified ?? true,
-      hasPrf: options.hasPrf ?? true,
-      automaticPresenceSimulation: true,
-    },
-  })) as { authenticatorId: string };
-  return { cdp, authenticatorId };
-};
+import { enableVirtualAuthenticator } from './fixtures/webauthn';
 
 const closeAll = async (...contexts: readonly BrowserContext[]): Promise<void> => {
   await Promise.all(contexts.map(async (ctx) => await ctx.close()));

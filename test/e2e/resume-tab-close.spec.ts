@@ -1,25 +1,11 @@
 import { type BrowserContext, expect, type Page, test } from '@playwright/test';
 
+import { enableVirtualAuthenticator } from './fixtures/webauthn';
+
 test.skip(
   ({ browserName }) => browserName !== 'chromium',
   'virtualAuthenticator (PRF) is Chromium-only',
 );
-
-const enableVirtualAuthenticator = async (page: Page): Promise<void> => {
-  const cdp = await page.context().newCDPSession(page);
-  await cdp.send('WebAuthn.enable');
-  await cdp.send('WebAuthn.addVirtualAuthenticator', {
-    options: {
-      protocol: 'ctap2',
-      transport: 'internal',
-      hasResidentKey: true,
-      hasUserVerification: true,
-      isUserVerified: true,
-      hasPrf: true,
-      automaticPresenceSimulation: true,
-    },
-  });
-};
 
 const waitForActive = async (page: Page): Promise<void> => {
   await expect(page.locator('[data-testid="status"]')).toHaveAttribute('data-state', 'ACTIVE', {
