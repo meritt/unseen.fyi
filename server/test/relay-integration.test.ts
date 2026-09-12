@@ -9,110 +9,26 @@ import {
 } from '@unseen/shared/wire/codec.ts';
 import { RELAY_KIND_CHUNK, RELAY_KIND_MSG } from '@unseen/shared/wire/file-frame.ts';
 
-import type { Config } from '../src/config.ts';
-import { DEFAULT_RELAY_BUCKET } from '../src/ratelimit/relay-bucket.ts';
 import { startServer, type StartedServer } from '../src/server.ts';
-
-const TEST_ORIGIN = 'http://localhost';
-
-const RELAXED_IP_LIMITS = {
-  connect: { limit: 1000, refillPerSec: 1000 },
-  newRoom: { limit: 1000, refillPerSec: 1000 },
-  joinRoom: { limit: 1000, refillPerSec: 1000 },
-  health: { limit: 1000, refillPerSec: 1000 },
-};
-
-const testConfig = (overrides: Partial<Config> = {}): Config => ({
-  port: 0,
-  host: '127.0.0.1',
-  trustedProxyHeader: undefined,
-  allowedOrigins: [TEST_ORIGIN],
-  ipLimits: RELAXED_IP_LIMITS,
-  relayBucket: DEFAULT_RELAY_BUCKET,
-  clientDistDir: '/tmp',
-  metricsEnabled: false,
-  metricsUser: undefined,
-  metricsPass: undefined,
-  metricsBind: '127.0.0.1',
-  metricsPort: 0,
-  gracePeriodMs: 300_000,
-  sweepIntervalMs: 30_000,
-  keepaliveIntervalMs: 20_000,
-  ...overrides,
-});
+import {
+  openPeer,
+  type Peer,
+  RELAXED_IP_LIMITS,
+  type ServerEvent,
+  testConfig,
+} from './_helpers/harness.ts';
 
 let started: StartedServer;
 
 beforeAll(() => {
-  started = startServer(testConfig());
+  started = startServer(testConfig({ ipLimits: RELAXED_IP_LIMITS }));
 });
 
 afterAll(async () => {
   await started.stop();
 });
 
-type ServerEvent =
-  | { kind: 'frame'; data: ArrayBuffer }
-  | { kind: 'close'; code: number; reason: string };
-
-type Client = {
-  readonly ws: WebSocket;
-  readonly events: ServerEvent[];
-  waitFor: (predicate: (event: ServerEvent) => boolean, timeoutMs?: number) => Promise<ServerEvent>;
-  close: () => void;
-};
-
-const sleep = async (ms: number): Promise<void> =>
-  await new Promise<void>((resolve) => {
-    setTimeout(resolve, ms);
-  });
-
-const openClient = async (): Promise<Client> => {
-  const WsCtor = WebSocket as unknown as new (
-    url: string,
-    init: { headers: Record<string, string> },
-  ) => WebSocket;
-  const ws = new WsCtor(started.url, { headers: { Origin: TEST_ORIGIN } });
-  ws.binaryType = 'arraybuffer';
-
-  const events: ServerEvent[] = [];
-
-  ws.addEventListener('message', (event) => {
-    if (event.data instanceof ArrayBuffer) {
-      events.push({ kind: 'frame', data: event.data });
-    }
-  });
-  ws.addEventListener('close', (event) => {
-    events.push({ kind: 'close', code: event.code, reason: event.reason });
-  });
-
-  await new Promise<void>((resolve, reject) => {
-    ws.addEventListener('open', () => resolve(), { once: true });
-    ws.addEventListener('error', () => reject(new Error('ws error')), { once: true });
-  });
-
-  const waitFor = async (
-    predicate: (event: ServerEvent) => boolean,
-    timeoutMs = 1000,
-  ): Promise<ServerEvent> => {
-    const deadline = performance.now() + timeoutMs;
-    while (performance.now() < deadline) {
-      const found = events.find((event) => predicate(event));
-      if (found !== undefined) {
-        return found;
-      }
-      await sleep(20);
-    }
-    throw new Error('waitFor timed out');
-  };
-
-  return {
-    ws,
-    events,
-    waitFor,
-    close: (): void => ws.close(),
-  };
-};
+const openClient = async (): Promise<Peer> => await openPeer(started.url);
 
 const makeRoomId = (seed: number): Bytes => {
   const id = new Uint8Array(16);
@@ -310,7 +226,7 @@ describe('relay happy path', () => {
     const bob2Ack = expectFrame(await bob2.waitFor((event) => event.kind === 'frame'));
     expect(decodeServerFrame(bob2Ack)).toEqual({ type: 'ERROR', code: 'ROOM_FULL' });
 
-    await sleep(200);
+    await Bun.sleep(200);
     expect(alice.events.filter((e) => e.kind === 'frame').length).toBe(3);
 
     alice.close();
@@ -337,7 +253,7 @@ describe('relay happy path', () => {
     crypto.getRandomValues(relayBody);
     alice.ws.send(encodeRelay({ kind: RELAY_KIND_MSG, nonce, ciphertext: relayBody }));
 
-    await sleep(150);
+    await Bun.sleep(150);
     expect(alice.events.some((e) => e.kind === 'close')).toBe(false);
 
     const bobResume = await openClient();
@@ -373,13 +289,13 @@ describe('relay happy path', () => {
 
     bob.close();
     await alice.waitFor(isType('PEER_DISCONNECTED'));
-    await sleep(30);
+    await Bun.sleep(30);
 
     const strayCipher = new Uint8Array(48);
     crypto.getRandomValues(strayCipher);
     alice.ws.send(encodeHandshake(hsNonce, strayCipher));
 
-    await sleep(150);
+    await Bun.sleep(150);
     expect(alice.events.some((e) => e.kind === 'close')).toBe(false);
 
     const bobResume = await openClient();
@@ -438,7 +354,7 @@ describe('relay happy path', () => {
 });
 
 describe('handshake hardening', () => {
-  const pair = async (roomId: Bytes): Promise<{ alice: Client; bob: Client }> => {
+  const pair = async (roomId: Bytes): Promise<{ alice: Peer; bob: Peer }> => {
     const alice = await openClient();
     const bob = await openClient();
     alice.ws.send(encodeHello({ roomId, intent: 'create' }));
