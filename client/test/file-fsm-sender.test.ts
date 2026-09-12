@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, jest, test } from 'bun:test';
 
 import type { PlaintextEnvelope } from '@unseen/shared/wire/envelope.ts';
 
@@ -97,7 +97,6 @@ describe('startTransfer — preconditions', () => {
       name: 'busy.bin',
       size: 10,
       file: makeFile(10, 'busy.bin'),
-      abort: AbortSignal.timeout(60_000),
     };
     await sender.startTransfer(makeFile(100, 'second.bin'));
     expect(envelopes).toEqual([]);
@@ -181,7 +180,6 @@ describe('dispatchFromReceiver — file_accept', () => {
       name: 'x.bin',
       size: 10,
       file: makeFile(10, 'x.bin'),
-      abort: AbortSignal.timeout(60_000),
     };
     sender.dispatchFromReceiver({
       kind: 'file_accept',
@@ -206,11 +204,140 @@ describe('dispatchFromReceiver — file_accept', () => {
     }
     const { tid } = state;
     sender.dispatchFromReceiver({ kind: 'file_accept', tid } satisfies FileEnvelopeFromReceiver);
-    await new Promise<void>((resolve) => {
-      globalThis.setTimeout(resolve, 10);
-    });
+    await Bun.sleep(10);
     expect(spawned).toBeDefined();
     expect(spawned?.outbox[0]?.kind).toBe('init');
+  });
+});
+
+describe('send loop ownership', () => {
+  test('a rejected chunk send fails the transfer instead of escaping the loop', async () => {
+    const { deps, envelopes, events } = makeDeps();
+    let spawned: MockWorker | undefined;
+    const sender = createFileSender(
+      {
+        ...deps,
+        sendChunk: async (): Promise<boolean> => {
+          await Promise.resolve();
+          throw new Error('chunk encrypt failed');
+        },
+      },
+      () => {
+        spawned = new MockWorker();
+        return asWorker(spawned);
+      },
+    );
+    await sender.startTransfer(makeFile(100, 'a.bin'));
+    const tid = transferActive.value?.tid ?? '';
+    sender.dispatchFromReceiver({ kind: 'file_accept', tid } satisfies FileEnvelopeFromReceiver);
+    await Bun.sleep(10);
+    spawned?.simulateMessage({ kind: 'ready' });
+    await Bun.sleep(10);
+    expect(transferActive.value?.phase).toBe('sending');
+
+    spawned?.simulateMessage({ kind: 'plaintext_chunk', seq: 0, data: new ArrayBuffer(64) });
+    await Bun.sleep(150);
+
+    expect(events).toContain('file_transfer_failed');
+    expect(transferActive.value).toBeNull();
+    expect(envelopes.some((envelope) => envelope.kind === 'file_cancel')).toBe(true);
+  });
+
+  test('a chunk from a cancelled transfer is not sent with the next one', async () => {
+    const { deps, frames } = makeDeps();
+    const workers: MockWorker[] = [];
+    const sender = createFileSender(deps, () => {
+      const worker = new MockWorker();
+      workers.push(worker);
+      return asWorker(worker);
+    });
+    await sender.startTransfer(makeFile(100, 'a.bin'));
+    const first = transferActive.value?.tid ?? '';
+    sender.dispatchFromReceiver({
+      kind: 'file_accept',
+      tid: first,
+    } satisfies FileEnvelopeFromReceiver);
+    await Bun.sleep(10);
+    workers[0]?.simulateMessage({ kind: 'ready' });
+    await Bun.sleep(10);
+
+    sender.cancelActive();
+    workers[0]?.simulateMessage({ kind: 'plaintext_chunk', seq: 0, data: new ArrayBuffer(64) });
+    await Bun.sleep(10);
+
+    await sender.startTransfer(makeFile(100, 'b.bin'));
+    const second = transferActive.value?.tid ?? '';
+    sender.dispatchFromReceiver({
+      kind: 'file_accept',
+      tid: second,
+    } satisfies FileEnvelopeFromReceiver);
+    await Bun.sleep(10);
+    workers[1]?.simulateMessage({ kind: 'ready' });
+    await Bun.sleep(120);
+
+    expect(frames).toEqual([]);
+    expect(transferActive.value?.phase).toBe('sending');
+  });
+});
+
+describe('worker start', () => {
+  const settle = async (): Promise<void> => {
+    for (let i = 0; i < 10; i += 1) {
+      await Promise.resolve();
+    }
+  };
+
+  const cancels = (envelopes: readonly PlaintextEnvelope[]): number =>
+    envelopes.filter((envelope) => envelope.kind === 'file_cancel').length;
+
+  test('a worker fatal before ready fails the transfer once and spares the next one', async () => {
+    jest.useFakeTimers();
+    try {
+      const { deps, envelopes, events } = makeDeps();
+      const workers: MockWorker[] = [];
+      const sender = createFileSender(deps, () => {
+        const worker = new MockWorker();
+        workers.push(worker);
+        return asWorker(worker);
+      });
+      await sender.startTransfer(makeFile(100, 'a.bin'));
+      const tid = transferActive.value?.tid ?? '';
+      sender.dispatchFromReceiver({ kind: 'file_accept', tid } satisfies FileEnvelopeFromReceiver);
+      workers[0]?.simulateMessage({ kind: 'fatal', err: 'init_failed' });
+      await settle();
+
+      await sender.startTransfer(makeFile(100, 'b.bin'));
+      const next = transferActive.value?.tid;
+      jest.advanceTimersByTime(10_000);
+      await settle();
+
+      expect(next).toBeDefined();
+      expect(transferActive.value?.tid).toBe(next);
+      expect(events).toEqual(['file_transfer_failed']);
+      expect(cancels(envelopes)).toBe(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test('a transfer cancelled while its worker starts is not failed again later', async () => {
+    jest.useFakeTimers();
+    try {
+      const { deps, envelopes, events } = makeDeps();
+      const sender = createFileSender(deps, () => asWorker(new MockWorker()));
+      await sender.startTransfer(makeFile(100, 'a.bin'));
+      const tid = transferActive.value?.tid ?? '';
+      sender.dispatchFromReceiver({ kind: 'file_accept', tid } satisfies FileEnvelopeFromReceiver);
+      sender.cancelActive();
+
+      jest.advanceTimersByTime(10_000);
+      await settle();
+
+      expect(events).toEqual(['file_transfer_cancelled']);
+      expect(cancels(envelopes)).toBe(1);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });
 
@@ -224,7 +351,6 @@ describe('dispatchFromReceiver — file_decline', () => {
       name: 'x.bin',
       size: 10,
       file: makeFile(10, 'x.bin'),
-      abort: AbortSignal.timeout(60_000),
     };
     sender.dispatchFromReceiver({
       kind: 'file_decline',
@@ -246,7 +372,6 @@ describe('dispatchFromReceiver — file_cancel from receiver', () => {
       name: 'x.bin',
       size: 10,
       file: makeFile(10, 'x.bin'),
-      abort: AbortSignal.timeout(60_000),
     };
     sender.dispatchFromReceiver({
       kind: 'file_cancel',
@@ -268,7 +393,6 @@ describe('dispatchFromReceiver — file_cancel from receiver', () => {
       size: 10,
       sentBytes: 0,
       worker: asWorker(new MockWorker()),
-      abort: AbortSignal.timeout(60_000),
     };
     sender.dispatchFromReceiver({
       kind: 'file_cancel',
@@ -289,7 +413,6 @@ describe('dispatchFromReceiver — file_cancel from receiver', () => {
       name: 'x.bin',
       size: 10,
       file: makeFile(10, 'x.bin'),
-      abort: AbortSignal.timeout(60_000),
     };
     sender.dispatchFromReceiver({
       kind: 'file_cancel',
@@ -313,7 +436,6 @@ describe('dispatchFromReceiver — file_progress', () => {
       size,
       sentBytes: 0,
       worker: asWorker(new MockWorker()),
-      abort: AbortSignal.timeout(60_000),
     };
   };
 
@@ -356,7 +478,6 @@ describe('cancelActive (user)', () => {
       name: 'x.bin',
       size: 10,
       file: makeFile(10, 'x.bin'),
-      abort: AbortSignal.timeout(60_000),
     };
     sender.cancelActive();
     expect(envelopes.length).toBe(1);
@@ -379,7 +500,6 @@ describe('shutdown', () => {
       size: 10,
       sentBytes: 0,
       worker: asWorker(mock),
-      abort: AbortSignal.timeout(60_000),
     };
     sender.shutdown();
     expect(transferActive.value).toBeNull();
@@ -397,7 +517,6 @@ describe('isActive', () => {
       name: 'x.bin',
       size: 10,
       file: makeFile(10, 'x.bin'),
-      abort: AbortSignal.timeout(60_000),
     };
     expect(sender.isActive()).toBe(true);
   });

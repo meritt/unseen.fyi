@@ -87,7 +87,6 @@ describe('resetFileStateOnTerminate — Signal state', () => {
       size: 1024,
       sentBytes: 0,
       worker: { terminate: (): void => {} } as unknown as Worker,
-      abort: AbortSignal.timeout(60_000),
     };
     incomingActive.value = {
       tid: 'fedcba9876543210',
@@ -101,7 +100,6 @@ describe('resetFileStateOnTerminate — Signal state', () => {
       receiveCredit: 4,
       pendingChunkQueue: [],
       worker: { terminate: (): void => {} } as unknown as Worker,
-      abort: AbortSignal.timeout(60_000),
     };
     sessionReceivedBytes.value = 1_000_000;
 

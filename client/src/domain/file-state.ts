@@ -12,7 +12,6 @@ export type TransferState =
       readonly name: string;
       readonly size: number;
       readonly file: File;
-      readonly abort: AbortSignal;
     }
   | {
       readonly tid: string;
@@ -21,14 +20,12 @@ export type TransferState =
       readonly size: number;
       sentBytes: number;
       readonly worker: Worker;
-      readonly abort: AbortSignal;
     }
   | {
       readonly tid: string;
       readonly phase: 'verifying';
       readonly name: string;
       readonly size: number;
-      readonly abort: AbortSignal;
     };
 
 export type IncomingState =
@@ -52,7 +49,6 @@ export type IncomingState =
       senderSha256?: string;
       finalizeRequested?: boolean;
       readonly worker: Worker;
-      readonly abort: AbortSignal;
     };
 
 export const transferActive: Signal<TransferState | null> = new Signal<TransferState | null>(null);
