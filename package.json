@@ -1,6 +1,6 @@
 {
   "name": "unseen",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "End-to-end encrypted one-on-one chat over a Bun relay",
   "keywords": [
