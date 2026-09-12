@@ -2,10 +2,11 @@ import { MAX_WIRE_BYTES } from '@unseen/shared/limits.ts';
 
 import type { Config } from './config.ts';
 import { type AggregateSnapshot, logger, startAggregateEmitter } from './log/log.ts';
+import { startMemoryPressureRelief } from './memory-pressure.ts';
 import { createMetricsCounters, type MetricsCounters } from './metrics/counters.ts';
 import { startMetricsServer } from './metrics/server.ts';
 import { createIpLimiter } from './ratelimit/ip-limiter.ts';
-import { startCleanupSweeper } from './room/cleanup.ts';
+import { runCleanupTick, startCleanupSweeper } from './room/cleanup.ts';
 import { startKeepalive } from './room/keepalive.ts';
 import { createRoomRegistry, type RoomRegistry } from './room/registry.ts';
 import { withSecurityHeaders } from './static/headers.ts';
@@ -121,6 +122,12 @@ export const startServer = (config: Config): StartedServer => {
     },
   });
 
+  const pressure = startMemoryPressureRelief(() => {
+    runCleanupTick(registry, config.gracePeriodMs, ipLimiter);
+    server.closeIdleConnections();
+    metricsServer?.closeIdleConnections();
+  });
+
   const boundPort = server.port ?? config.port;
   return {
     url: `ws://${server.hostname}:${boundPort}/ws`,
@@ -128,6 +135,7 @@ export const startServer = (config: Config): StartedServer => {
     metricsPort: metricsServer?.port ?? undefined,
     counters,
     stop: async (): Promise<void> => {
+      pressure.stop();
       cleanup.stop();
       keepalive.stop();
       aggregate.stop();

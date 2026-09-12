@@ -47,6 +47,16 @@ type IdleBucketCollector = {
   readonly gc: (now?: number) => void;
 };
 
+export const runCleanupTick = (
+  registry: RoomRegistry,
+  gracePeriodMs: number,
+  ipLimiter?: IdleBucketCollector,
+): void => {
+  const now = performance.now();
+  sweepRooms(registry, now, gracePeriodMs);
+  ipLimiter?.gc(now);
+};
+
 export const startCleanupSweeper = (
   registry: RoomRegistry,
   gracePeriodMs: number = GRACE_PERIOD_MS,
@@ -54,9 +64,7 @@ export const startCleanupSweeper = (
   ipLimiter?: IdleBucketCollector,
 ): { stop: () => void } => {
   const timer = setInterval(() => {
-    const now = performance.now();
-    sweepRooms(registry, now, gracePeriodMs);
-    ipLimiter?.gc(now);
+    runCleanupTick(registry, gracePeriodMs, ipLimiter);
   }, sweepIntervalMs);
   return {
     stop: (): void => {
