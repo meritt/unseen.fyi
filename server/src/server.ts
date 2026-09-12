@@ -15,6 +15,22 @@ import { extractIp } from './wire/ip.ts';
 import { isAllowedOrigin } from './wire/origin.ts';
 
 const AGGREGATE_EMIT_INTERVAL_MS = 60_000;
+const SHUTDOWN_DEADLINE_MS = 5000;
+
+const closeWithDeadline = async (
+  closing: ReadonlyArray<Promise<void> | undefined>,
+): Promise<void> => {
+  const { promise: deadline, resolve } = Promise.withResolvers<undefined>();
+  const timer = setTimeout(resolve.bind(null, undefined), SHUTDOWN_DEADLINE_MS);
+  try {
+    await Promise.race([
+      Promise.allSettled(closing.filter((pending) => pending !== undefined)),
+      deadline,
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+};
 
 const internalErrorResponse = (): Response => {
   logger.error('uncaught_fetch_error');
@@ -108,11 +124,7 @@ export const startServer = (config: Config): StartedServer => {
       cleanup.stop();
       keepalive.stop();
       aggregate.stop();
-      void server.stop(true);
-      if (metricsServer !== null) {
-        void metricsServer.stop(true);
-      }
-      await Promise.resolve();
+      await closeWithDeadline([server.stop(true), metricsServer?.stop(true)]);
     },
   };
 };
