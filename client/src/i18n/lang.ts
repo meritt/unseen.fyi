@@ -55,10 +55,7 @@ const writeStoredLang = (value: Lang): void => {
   } catch {}
 };
 
-const initialLang = readStoredLang() ?? detectInitialLang();
-writeStoredLang(initialLang);
-
-export const lang = new Signal<Lang>(initialLang);
+export const lang = new Signal<Lang>(readStoredLang() ?? detectInitialLang());
 
 lang.subscribe(() => {
   writeStoredLang(lang.value);
