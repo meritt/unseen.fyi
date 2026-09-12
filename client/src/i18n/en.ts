@@ -40,6 +40,7 @@ type Dict = {
       readonly reconnecting: string;
       readonly reconnectingIn: string;
       readonly sessionEnding: string;
+      readonly loadFailed: string;
     };
     readonly resumeLocked: {
       readonly title: string;
@@ -143,6 +144,7 @@ export const en: Dict = {
       reconnecting: 'Reconnecting…',
       reconnectingIn: 'Reconnecting in {seconds} s…',
       sessionEnding: 'Session ending…',
+      loadFailed: "Couldn't load the chat. Reload the page to try again.",
     },
     resumeLocked: {
       title: 'Session is locked. Confirm your passkey to continue.',
