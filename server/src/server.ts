@@ -1,13 +1,13 @@
 import { MAX_WIRE_BYTES } from '@unseen/shared/limits.ts';
 
 import type { Config } from './config.ts';
-import { logger, startAggregateEmitter } from './log/log.ts';
+import { type AggregateSnapshot, logger, startAggregateEmitter } from './log/log.ts';
 import { createMetricsCounters, type MetricsCounters } from './metrics/counters.ts';
 import { startMetricsServer } from './metrics/server.ts';
 import { createIpLimiter } from './ratelimit/ip-limiter.ts';
 import { startCleanupSweeper } from './room/cleanup.ts';
 import { startKeepalive } from './room/keepalive.ts';
-import { createRoomRegistry } from './room/registry.ts';
+import { createRoomRegistry, type RoomRegistry } from './room/registry.ts';
 import { withSecurityHeaders } from './static/headers.ts';
 import { handleHttpRequest } from './static/serve.ts';
 import { createHandlers, createInitialConnectionData } from './wire/handlers.ts';
@@ -16,6 +16,18 @@ import { isAllowedOrigin } from './wire/origin.ts';
 
 const AGGREGATE_EMIT_INTERVAL_MS = 60_000;
 const SHUTDOWN_DEADLINE_MS = 5000;
+
+const aggregateSnapshot = (
+  registry: RoomRegistry,
+  counters: MetricsCounters,
+): AggregateSnapshot => {
+  const counts = registry.counts();
+  return {
+    activeRooms: counts.active,
+    waitingRooms: counts.waiting,
+    totalConnections: counters.snapshot().totalConnections,
+  };
+};
 
 const closeWithDeadline = async (
   closing: ReadonlyArray<Promise<void> | undefined>,
@@ -63,15 +75,10 @@ export const startServer = (config: Config): StartedServer => {
   );
   const keepalive = startKeepalive(registry, config.keepaliveIntervalMs);
   const metricsServer = startMetricsServer(config, counters, registry);
-  const aggregate = startAggregateEmitter(() => {
-    const counts = registry.counts();
-    return {
-      ...counts,
-      activeRooms: counts.active,
-      waitingRooms: counts.waiting,
-      totalConnections: counters.snapshot().totalConnections,
-    };
-  }, AGGREGATE_EMIT_INTERVAL_MS);
+  const aggregate = startAggregateEmitter(
+    () => aggregateSnapshot(registry, counters),
+    AGGREGATE_EMIT_INTERVAL_MS,
+  );
 
   const server = Bun.serve({
     port: config.port,
