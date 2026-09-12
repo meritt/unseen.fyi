@@ -97,29 +97,30 @@ export const clearStoredSession = (storageKey: string): void => {
 };
 
 export type StoredSessionMirror = {
-  readonly storageKey: string;
-  readonly initial: StoredSession;
   setCounterSend: (counter: bigint) => void;
   setCounterRecv: (counter: bigint) => void;
+  setRekeyInProgress: () => void;
 };
 
 export const mirrorStoredSession = (
-  storageKey: string,
   initial: StoredSession,
+  write: (state: StoredSession) => void,
 ): StoredSessionMirror => {
   let current: StoredSession = initial;
   const flush = (): void => {
-    writeStoredSession(storageKey, current);
+    write(current);
   };
   return {
-    storageKey,
-    initial,
     setCounterSend: (counter: bigint): void => {
       current = { ...current, s: counter.toString() };
       flush();
     },
     setCounterRecv: (counter: bigint): void => {
       current = { ...current, n: counter.toString() };
+      flush();
+    },
+    setRekeyInProgress: (): void => {
+      current = { ...current, rekey_in_progress: true };
       flush();
     },
   };

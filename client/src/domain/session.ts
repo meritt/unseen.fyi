@@ -47,6 +47,7 @@ import {
   encodeRole,
   mirrorStoredSession,
   readStoredSession,
+  type StoredSession,
   type StoredSessionMirror,
   writeStoredSession,
 } from '../storage/session-store.ts';
@@ -194,6 +195,14 @@ export const startSession = async (deps: SessionDependencies): Promise<RunningSe
   sessionState.value = stored === undefined ? 'CONNECTING' : 'RESUMING';
 
   const lifecycleAbort = new AbortController();
+  const isTerminated = (): boolean => terminated;
+
+  const writeRecord = (record: StoredSession): void => {
+    if (terminated) {
+      throw new Error('session_terminated');
+    }
+    writeStoredSession(keys.storageKey, record);
+  };
 
   const clearReconnectTimer = (): void => {
     if (reconnectTimer !== undefined) {
@@ -211,6 +220,10 @@ export const startSession = async (deps: SessionDependencies): Promise<RunningSe
     'RECONNECTING',
   ]);
 
+  const signalCredentialUnknown = (credentialId: ArrayBuffer): void => {
+    void signalSessionCredentialUnknown({ rpId: deps.rpId, credentialId });
+  };
+
   const finalizeTermination = (): void => {
     sessionState.value = 'TERMINATED';
     fileSender?.shutdown();
@@ -218,10 +231,7 @@ export const startSession = async (deps: SessionDependencies): Promise<RunningSe
     fileReceiver?.shutdown();
     fileReceiver = undefined;
     if (credentialIdForCleanup !== undefined) {
-      void signalSessionCredentialUnknown({
-        rpId: deps.rpId,
-        credentialId: credentialIdForCleanup,
-      });
+      signalCredentialUnknown(credentialIdForCleanup);
     }
     clearStoredSession(keys.storageKey);
     claimRef.current?.release();
@@ -403,7 +413,7 @@ export const startSession = async (deps: SessionDependencies): Promise<RunningSe
     await enqueueOutbound(
       async () =>
         await runRelaySendTask({
-          isTerminated: () => terminated,
+          isTerminated,
           getConnection: requireConnection,
           terminate,
           allocate: (k) => allocateSendCounter(active, k),
@@ -503,6 +513,9 @@ export const startSession = async (deps: SessionDependencies): Promise<RunningSe
       terminate('sas_length_invariant');
       return;
     }
+    if (isTerminated()) {
+      return;
+    }
     deps.onSas?.(material.sasBytes);
     const role = myRole.value;
     if (role === undefined) {
@@ -540,6 +553,9 @@ export const startSession = async (deps: SessionDependencies): Promise<RunningSe
       publicKeyRaw: pair.publicKeyRaw,
       handshakeKey: keys.handshakeKey,
     });
+    if (isTerminated()) {
+      return;
+    }
     connection.send(encodeHandshake(wrapped.nonce, wrapped.ciphertext));
     if (sessionState.value === 'CONNECTING' || sessionState.value === 'WAITING_FOR_PEER') {
       sessionState.value = 'HANDSHAKING';
@@ -606,6 +622,9 @@ export const startSession = async (deps: SessionDependencies): Promise<RunningSe
       ...buildPersistence(active.mirror),
     };
     const result = await decryptIncoming(recvState, nonce, ciphertext, mode);
+    if (isTerminated()) {
+      return;
+    }
     if (result.status !== 'ok') {
       terminate(`relay_${result.status}`);
       return;
@@ -623,6 +642,9 @@ export const startSession = async (deps: SessionDependencies): Promise<RunningSe
         return;
       }
       await sendResumeAck(active, envelope._id);
+      if (isTerminated()) {
+        return;
+      }
       sessionState.value = 'ACTIVE';
       appendSystemMessage('peer_reconnected', clock.nowIso());
       return;
@@ -667,7 +689,7 @@ export const startSession = async (deps: SessionDependencies): Promise<RunningSe
       kind === RELAY_KIND_REKEY_DONE
     ) {
       const payload = await decryptModeFrame({ active, kind, nonce, ciphertext, mode });
-      if (payload === undefined) {
+      if (isTerminated() || payload === undefined) {
         return;
       }
       if (kind === RELAY_KIND_MODE_UPGRADED) {
@@ -793,12 +815,12 @@ export const startSession = async (deps: SessionDependencies): Promise<RunningSe
       mode_phase: modePhase,
     };
     try {
-      writeStoredSession(keys.storageKey, record);
+      writeRecord(record);
     } catch {
       terminate('storage_fail');
       return false;
     }
-    active.mirror = mirrorStoredSession(keys.storageKey, record);
+    active.mirror = mirrorStoredSession(record, writeRecord);
     return true;
   };
 
@@ -818,6 +840,12 @@ export const startSession = async (deps: SessionDependencies): Promise<RunningSe
       prfSalt: keys.prfSalt,
       roomIdBytes: keys.roomIdBytes,
     });
+    if (isTerminated()) {
+      if (outcome.status === 'ok') {
+        signalCredentialUnknown(outcome.credentialId);
+      }
+      return;
+    }
     if (outcome.status === 'cancelled') {
       sessionState.value = 'ACTIVE';
       appendSystemMessage('mode_upgrade_dismissed_by_user', clock.nowIso());
@@ -859,7 +887,7 @@ export const startSession = async (deps: SessionDependencies): Promise<RunningSe
   };
 
   const startRekeyIfInitiator = async (active: ActiveContext): Promise<void> => {
-    if (rekeyInFlight || sessionState.value === 'REKEYING') {
+    if (isTerminated() || rekeyInFlight || sessionState.value === 'REKEYING') {
       return;
     }
     rekeyInFlight = true;
@@ -868,10 +896,7 @@ export const startSession = async (deps: SessionDependencies): Promise<RunningSe
     fileReceiver?.cancelActive('session_rekey');
     if (active.mirror !== undefined) {
       try {
-        writeStoredSession(keys.storageKey, {
-          ...active.mirror.initial,
-          rekey_in_progress: true,
-        });
+        active.mirror.setRekeyInProgress();
       } catch {
         terminate('storage_fail');
         return;
@@ -900,10 +925,7 @@ export const startSession = async (deps: SessionDependencies): Promise<RunningSe
     fileReceiver?.cancelActive('session_rekey');
     if (active.mirror !== undefined) {
       try {
-        writeStoredSession(keys.storageKey, {
-          ...active.mirror.initial,
-          rekey_in_progress: true,
-        });
+        active.mirror.setRekeyInProgress();
       } catch {
         terminate('storage_fail');
         return;
@@ -965,6 +987,9 @@ export const startSession = async (deps: SessionDependencies): Promise<RunningSe
     newSessionKey: CryptoKey,
     newSessionKeyRaw: Bytes,
   ): Promise<void> => {
+    if (isTerminated()) {
+      return;
+    }
     active.sessionKey = newSessionKey;
     active.counterCommitted = 0n;
     active.counterReserved = 0n;
@@ -1169,6 +1194,14 @@ export const startSession = async (deps: SessionDependencies): Promise<RunningSe
       terminate(reason);
       return 'failed';
     }
+    if (isTerminated()) {
+      try {
+        signalCredentialUnknown(base64urlDecode(storedRecord.cid).buffer);
+      } catch {
+        /* malformed cid */
+      }
+      return 'failed';
+    }
     currentWrapKey = resumedWrap;
     if (storedRecord.sas !== undefined) {
       try {
@@ -1184,7 +1217,7 @@ export const startSession = async (deps: SessionDependencies): Promise<RunningSe
     } catch {
       /* malformed cid */
     }
-    const mirror = mirrorStoredSession(keys.storageKey, storedRecord);
+    const mirror = mirrorStoredSession(storedRecord, writeRecord);
     const storedReserved = BigInt(storedRecord.s);
     let restoredSas: Bytes;
     if (storedRecord.sas !== undefined) {
