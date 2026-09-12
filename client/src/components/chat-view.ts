@@ -203,11 +203,14 @@ export class ChatView extends LitElement {
   };
 
   async #redirectAfterPanicPurge(): Promise<void> {
-    const deadline = new Promise<void>((resolve) => {
-      globalThis.setTimeout(resolve, PANIC_PURGE_WAIT_MS);
-    });
-    await Promise.race([opfsPurgeDone(), deadline]);
-    globalThis.location.replace('/');
+    const { promise: deadline, resolve } = Promise.withResolvers<undefined>();
+    const timer = globalThis.setTimeout(resolve.bind(null, undefined), PANIC_PURGE_WAIT_MS);
+    try {
+      await Promise.race([opfsPurgeDone(), deadline]);
+    } finally {
+      globalThis.clearTimeout(timer);
+      globalThis.location.replace('/');
+    }
   }
 
   #onStateChange(): void {
@@ -645,9 +648,11 @@ export class ChatView extends LitElement {
           ><a href=${url} data-testid="invite-link" @click=${this.#onLinkClick}>${linkText}</a
           >${after}<button
             type="button"
-            class=${this.#copyConfirmed
-              ? 'chat__invite-copy chat__invite-copy--copied'
-              : 'chat__invite-copy'}
+            class=${
+              this.#copyConfirmed
+                ? 'chat__invite-copy chat__invite-copy--copied'
+                : 'chat__invite-copy'
+            }
             data-testid="copy-link"
             aria-label=${t('chat.system.copyLink')}
             data-tooltip=${t('chat.system.copyLink')}
@@ -989,12 +994,16 @@ export class ChatView extends LitElement {
         <chat-header .prfCapable=${this.#prfCapable}></chat-header>
         <div class="chat__card">
           <div class="chat__card-top">
-            ${sasPanelVisible
-              ? html`<sas-badge class="chat__sas" .sas=${this.#sas}></sas-badge>`
-              : html`<span class="chat__sas chat__sas--placeholder"></span>`}
-            ${burnVisible
-              ? html`<burn-button @burn-confirmed=${this.#onPanicConfirmed}></burn-button>`
-              : ''}
+            ${
+              sasPanelVisible
+                ? html`<sas-badge class="chat__sas" .sas=${this.#sas}></sas-badge>`
+                : html`<span class="chat__sas chat__sas--placeholder"></span>`
+            }
+            ${
+              burnVisible
+                ? html`<burn-button @burn-confirmed=${this.#onPanicConfirmed}></burn-button>`
+                : ''
+            }
           </div>
           <hr class="chat__card-divider" />
           ${this.#renderPlaceholder()}
@@ -1006,24 +1015,28 @@ export class ChatView extends LitElement {
             data-testid="messages"
             @scroll=${this.#onFeedScroll}
           >
-            ${pruned > 0
-              ? html`<li class="chat__earlier-removed" data-testid="earlier-removed">
-                  ${t('chat.earlierRemoved')}
-                </li>`
-              : ''}
+            ${
+              pruned > 0
+                ? html`<li class="chat__earlier-removed" data-testid="earlier-removed">
+                    ${t('chat.earlierRemoved')}
+                  </li>`
+                : ''
+            }
             ${messages.value.map((message) => this.#renderFeedItem(message))}
             <li class="chat__sentinel" aria-hidden="true" data-testid="feed-sentinel"></li>
           </ul>
-          ${unread > 0 && !this.#autoScrollAtBottom
-            ? html`<button
-                type="button"
-                class="chat__new-badge"
-                data-testid="auto-scroll-badge"
-                @click=${this.#onJumpToBottom}
-              >
-                ${t('chat.newMessages', { count: unread })}
-              </button>`
-            : ''}
+          ${
+            unread > 0 && !this.#autoScrollAtBottom
+              ? html`<button
+                  type="button"
+                  class="chat__new-badge"
+                  data-testid="auto-scroll-badge"
+                  @click=${this.#onJumpToBottom}
+                >
+                  ${t('chat.newMessages', { count: unread })}
+                </button>`
+              : ''
+          }
           ${composerVisible ? this.#renderComposer(composerEnabled) : ''}
         </div>
         ${this.#renderFooter()}
