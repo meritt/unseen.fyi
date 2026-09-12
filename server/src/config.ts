@@ -25,6 +25,7 @@ export type Config = {
   readonly gracePeriodMs: number;
   readonly sweepIntervalMs: number;
   readonly keepaliveIntervalMs: number;
+  readonly maxConnections: number;
 };
 
 const DEFAULT_PORT = 3001;
@@ -32,6 +33,7 @@ const DEFAULT_HOST = '0.0.0.0';
 const DEFAULT_METRICS_BIND = '127.0.0.1';
 const DEFAULT_METRICS_PORT = 9101;
 const DEFAULT_KEEPALIVE_INTERVAL_MS = 20_000;
+const DEFAULT_MAX_CONNECTIONS = 256;
 const DEFAULT_CLIENT_DIST_DIR = path.resolve(import.meta.dir, '../../client/dist');
 
 type NumberRule = {
@@ -146,5 +148,6 @@ export const loadConfig = (): Config => {
       DEFAULT_KEEPALIVE_INTERVAL_MS,
       INTERVAL,
     ),
+    maxConnections: envNumber('UNSEEN_MAX_CONNECTIONS', DEFAULT_MAX_CONNECTIONS, POSITIVE_INTEGER),
   };
 };
