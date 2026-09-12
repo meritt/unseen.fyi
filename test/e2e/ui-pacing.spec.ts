@@ -24,6 +24,18 @@ const goActive = async (browser: Browser) => {
   return { aliceContext, bobContext, alice, bob };
 };
 
+const feedIsScrollable = (): boolean => {
+  const feed = document.querySelector('[data-testid="messages"]');
+  return feed instanceof HTMLElement && feed.scrollHeight - feed.clientHeight > 32;
+};
+
+const feedIsAwayFromBottom = (): boolean => {
+  const feed = document.querySelector('[data-testid="messages"]');
+  return (
+    feed instanceof HTMLElement && feed.scrollHeight - (feed.scrollTop + feed.clientHeight) > 32
+  );
+};
+
 test('render-pacing-burst: 60 synthetic peer messages coalesce into a small number of renders', async ({
   browser,
 }) => {
@@ -127,6 +139,8 @@ test('auto-scroll-detach: scrolling up while messages flow shows the "new messag
       });
     });
 
+    await bob.waitForFunction(feedIsScrollable);
+
     await bob.evaluate(() => {
       const feed = document.querySelector('[data-testid="messages"]');
       if (feed instanceof HTMLElement) {
@@ -134,7 +148,8 @@ test('auto-scroll-detach: scrolling up while messages flow shows the "new messag
         feed.dispatchEvent(new Event('scroll'));
       }
     });
-    await bob.waitForTimeout(150);
+
+    await bob.waitForFunction(feedIsAwayFromBottom);
 
     await bob.evaluate(async () => {
       const hook = (

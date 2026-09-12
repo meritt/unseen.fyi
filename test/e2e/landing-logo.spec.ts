@@ -5,7 +5,13 @@ const LOGO_SELECTOR = '[data-testid="landing-logo"]';
 const CREATE_SELECTOR = '[data-testid="create-room"]';
 
 const readOpacity = async (locator: Locator): Promise<number> =>
-  await locator.evaluate((el) => Number.parseFloat(globalThis.getComputedStyle(el).opacity));
+  await locator.evaluate((el) => {
+    const raw = globalThis.getComputedStyle(el).opacity;
+    if (raw === '') {
+      throw new Error('element has no computed opacity');
+    }
+    return Number(raw);
+  });
 
 test('logo dissolves when create button is hovered and restores on mouse-leave', async ({
   page,
