@@ -33,7 +33,8 @@
   ],
   "type": "module",
   "scripts": {
-    "ci": "bun run format:check && bun run lint && bun run typecheck && bun run test && bun run perf:bundle-size",
+    "ci": "bun run format:check && bun run lint && bun run typecheck && bun run audit && bun run test && bun run perf:bundle-size",
+    "audit": "bun audit --prod && bun audit --audit-level=high",
     "lint": "oxlint --type-aware",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
