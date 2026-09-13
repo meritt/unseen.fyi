@@ -1,9 +1,8 @@
-import { createWorker } from '../workers/create-worker.ts';
+import { createWorker, workerReady } from '../workers/create-worker.ts';
 import { parseMarkdownString, type MarkdownAst } from './markdown-impl.ts';
 import type { WorkerReady, WorkerRequest, WorkerResponse } from './markdown-worker.ts';
 
 const PARSE_TIMEOUT_MS = 200;
-const WORKER_READY_TIMEOUT_MS = 5000;
 
 type PendingRequest = {
   readonly resolve: (ast: MarkdownAst) => void;
@@ -38,25 +37,12 @@ const spawnWorker = (): WorkerState => {
   const worker = createWorker(new URL('./markdown-worker.js', import.meta.url), {
     type: 'module',
   });
-  const readyDeferred = Promise.withResolvers<boolean>();
-  AbortSignal.timeout(WORKER_READY_TIMEOUT_MS).addEventListener(
-    'abort',
-    () => {
-      readyDeferred.resolve(false);
-    },
-    { once: true },
-  );
   worker.addEventListener('message', (event: MessageEvent<WorkerReady | WorkerResponse>) => {
-    if ('kind' in event.data) {
-      readyDeferred.resolve(true);
-      return;
+    if (!('kind' in event.data)) {
+      handleWorkerResponse(event.data);
     }
-    handleWorkerResponse(event.data);
   });
-  worker.addEventListener('error', () => {
-    readyDeferred.resolve(false);
-  });
-  return { worker, pending: new Map(), ready: readyDeferred.promise };
+  return { worker, pending: new Map(), ready: workerReady(worker) };
 };
 
 const ensureWorker = (): WorkerState => {

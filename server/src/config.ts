@@ -25,6 +25,7 @@ export type Config = {
   readonly gracePeriodMs: number;
   readonly sweepIntervalMs: number;
   readonly keepaliveIntervalMs: number;
+  readonly maxConnections: number;
 };
 
 const DEFAULT_PORT = 3001;
@@ -32,15 +33,45 @@ const DEFAULT_HOST = '0.0.0.0';
 const DEFAULT_METRICS_BIND = '127.0.0.1';
 const DEFAULT_METRICS_PORT = 9101;
 const DEFAULT_KEEPALIVE_INTERVAL_MS = 20_000;
+const DEFAULT_MAX_CONNECTIONS = 256;
 const DEFAULT_CLIENT_DIST_DIR = path.resolve(import.meta.dir, '../../client/dist');
 
-const parsePort = (raw: string | undefined): number => {
+type NumberRule = {
+  readonly valid: (value: number) => boolean;
+  readonly expected: string;
+};
+
+const PORT: NumberRule = {
+  valid: (value) => Number.isInteger(value) && value >= 1 && value <= 65_535,
+  expected: 'an integer in [1, 65535]',
+};
+
+const POSITIVE_INTEGER: NumberRule = {
+  valid: (value) => Number.isInteger(value) && value >= 1,
+  expected: 'a positive integer',
+};
+
+// a timer delay past this is clamped to 1ms, turning an interval into a busy loop
+const MAX_TIMER_MS = 2_147_483_647;
+
+const INTERVAL: NumberRule = {
+  valid: (value) => Number.isFinite(value) && value > 0 && value <= MAX_TIMER_MS,
+  expected: `a positive number of milliseconds not above ${String(MAX_TIMER_MS)}`,
+};
+
+const NON_NEGATIVE: NumberRule = {
+  valid: (value) => Number.isFinite(value) && value >= 0,
+  expected: 'a non-negative number',
+};
+
+const envNumber = (name: string, fallback: number, rule: NumberRule): number => {
+  const raw = Bun.env[name];
   if (raw === undefined || raw === '') {
-    return DEFAULT_PORT;
+    return fallback;
   }
   const value = Number(raw);
-  if (!Number.isInteger(value) || value < 1 || value > 65_535) {
-    throw new Error(`UNSEEN_PORT must be an integer in [1, 65535], got: ${raw}`);
+  if (!rule.valid(value)) {
+    throw new Error(`${name} must be ${rule.expected}, got: ${raw}`);
   }
   return value;
 };
@@ -57,56 +88,11 @@ const parseAllowedOrigins = (raw: string | undefined): readonly string[] | undef
 };
 
 const overrideLimits = (action: keyof IpLimiterConfig, base: ActionLimits): ActionLimits => {
-  const limit = Bun.env[`UNSEEN_RL_${action.toUpperCase()}_LIMIT`];
-  const refill = Bun.env[`UNSEEN_RL_${action.toUpperCase()}_REFILL_PER_SEC`];
+  const prefix = `UNSEEN_RL_${action.toUpperCase()}`;
   return {
-    limit: limit === undefined ? base.limit : Number(limit),
-    refillPerSec: refill === undefined ? base.refillPerSec : Number(refill),
+    limit: envNumber(`${prefix}_LIMIT`, base.limit, NON_NEGATIVE),
+    refillPerSec: envNumber(`${prefix}_REFILL_PER_SEC`, base.refillPerSec, NON_NEGATIVE),
   };
-};
-
-const parseMetricsPort = (raw: string | undefined): number => {
-  if (raw === undefined || raw === '') {
-    return DEFAULT_METRICS_PORT;
-  }
-  const value = Number(raw);
-  if (!Number.isInteger(value) || value < 1 || value > 65_535) {
-    throw new Error(`UNSEEN_METRICS_PORT must be an integer in [1, 65535], got: ${raw}`);
-  }
-  return value;
-};
-
-const parseGracePeriodMs = (raw: string | undefined): number => {
-  if (raw === undefined || raw === '') {
-    return GRACE_PERIOD_MS;
-  }
-  const value = Number(raw);
-  if (!Number.isFinite(value) || value < 0) {
-    throw new Error(`UNSEEN_GRACE_MS must be a non-negative number, got: ${raw}`);
-  }
-  return value;
-};
-
-const parseSweepIntervalMs = (raw: string | undefined): number => {
-  if (raw === undefined || raw === '') {
-    return SWEEP_INTERVAL_MS;
-  }
-  const value = Number(raw);
-  if (!Number.isFinite(value) || value <= 0) {
-    throw new Error(`UNSEEN_SWEEP_MS must be a positive number, got: ${raw}`);
-  }
-  return value;
-};
-
-const parseKeepaliveIntervalMs = (raw: string | undefined): number => {
-  if (raw === undefined || raw === '') {
-    return DEFAULT_KEEPALIVE_INTERVAL_MS;
-  }
-  const value = Number(raw);
-  if (!Number.isFinite(value) || value <= 0) {
-    throw new Error(`UNSEEN_WS_KEEPALIVE_MS must be a positive number, got: ${raw}`);
-  }
-  return value;
 };
 
 const trimOrUndefined = (raw: string | undefined): string | undefined => {
@@ -127,7 +113,7 @@ export const loadConfig = (): Config => {
     );
   }
   return {
-    port: parsePort(Bun.env.UNSEEN_PORT),
+    port: envNumber('UNSEEN_PORT', DEFAULT_PORT, PORT),
     host: Bun.env.UNSEEN_HOST ?? DEFAULT_HOST,
     // empty header must collapse to undefined: headers.get('') throws per request
     trustedProxyHeader: trimOrUndefined(Bun.env.UNSEEN_PROXY_HEADER),
@@ -139,14 +125,12 @@ export const loadConfig = (): Config => {
       health: overrideLimits('health', DEFAULT_IP_LIMITS.health),
     },
     relayBucket: {
-      limit:
-        Bun.env.UNSEEN_RL_RELAY_LIMIT === undefined
-          ? DEFAULT_RELAY_BUCKET.limit
-          : Number(Bun.env.UNSEEN_RL_RELAY_LIMIT),
-      refillPerSec:
-        Bun.env.UNSEEN_RL_RELAY_REFILL_PER_SEC === undefined
-          ? DEFAULT_RELAY_BUCKET.refillPerSec
-          : Number(Bun.env.UNSEEN_RL_RELAY_REFILL_PER_SEC),
+      limit: envNumber('UNSEEN_RL_RELAY_LIMIT', DEFAULT_RELAY_BUCKET.limit, NON_NEGATIVE),
+      refillPerSec: envNumber(
+        'UNSEEN_RL_RELAY_REFILL_PER_SEC',
+        DEFAULT_RELAY_BUCKET.refillPerSec,
+        NON_NEGATIVE,
+      ),
     },
     clientDistDir:
       Bun.env.UNSEEN_CLIENT_DIST_DIR === undefined || Bun.env.UNSEEN_CLIENT_DIST_DIR === ''
@@ -156,9 +140,14 @@ export const loadConfig = (): Config => {
     metricsUser,
     metricsPass,
     metricsBind: trimOrUndefined(Bun.env.UNSEEN_METRICS_BIND) ?? DEFAULT_METRICS_BIND,
-    metricsPort: parseMetricsPort(Bun.env.UNSEEN_METRICS_PORT),
-    gracePeriodMs: parseGracePeriodMs(Bun.env.UNSEEN_GRACE_MS),
-    sweepIntervalMs: parseSweepIntervalMs(Bun.env.UNSEEN_SWEEP_MS),
-    keepaliveIntervalMs: parseKeepaliveIntervalMs(Bun.env.UNSEEN_WS_KEEPALIVE_MS),
+    metricsPort: envNumber('UNSEEN_METRICS_PORT', DEFAULT_METRICS_PORT, PORT),
+    gracePeriodMs: envNumber('UNSEEN_GRACE_MS', GRACE_PERIOD_MS, NON_NEGATIVE),
+    sweepIntervalMs: envNumber('UNSEEN_SWEEP_MS', SWEEP_INTERVAL_MS, INTERVAL),
+    keepaliveIntervalMs: envNumber(
+      'UNSEEN_WS_KEEPALIVE_MS',
+      DEFAULT_KEEPALIVE_INTERVAL_MS,
+      INTERVAL,
+    ),
+    maxConnections: envNumber('UNSEEN_MAX_CONNECTIONS', DEFAULT_MAX_CONNECTIONS, POSITIVE_INTEGER),
   };
 };

@@ -1,13 +1,14 @@
 import { MAX_WIRE_BYTES } from '@unseen/shared/limits.ts';
 
 import type { Config } from './config.ts';
-import { logger, startAggregateEmitter } from './log/log.ts';
+import { type AggregateSnapshot, logger, startAggregateEmitter } from './log/log.ts';
+import { startMemoryPressureRelief } from './memory-pressure.ts';
 import { createMetricsCounters, type MetricsCounters } from './metrics/counters.ts';
 import { startMetricsServer } from './metrics/server.ts';
 import { createIpLimiter } from './ratelimit/ip-limiter.ts';
-import { startCleanupSweeper } from './room/cleanup.ts';
+import { runCleanupTick, startCleanupSweeper } from './room/cleanup.ts';
 import { startKeepalive } from './room/keepalive.ts';
-import { createRoomRegistry } from './room/registry.ts';
+import { createRoomRegistry, type RoomRegistry } from './room/registry.ts';
 import { withSecurityHeaders } from './static/headers.ts';
 import { handleHttpRequest } from './static/serve.ts';
 import { createHandlers, createInitialConnectionData } from './wire/handlers.ts';
@@ -15,6 +16,34 @@ import { extractIp } from './wire/ip.ts';
 import { isAllowedOrigin } from './wire/origin.ts';
 
 const AGGREGATE_EMIT_INTERVAL_MS = 60_000;
+const SHUTDOWN_DEADLINE_MS = 5000;
+
+const aggregateSnapshot = (
+  registry: RoomRegistry,
+  counters: MetricsCounters,
+): AggregateSnapshot => {
+  const counts = registry.counts();
+  return {
+    activeRooms: counts.active,
+    waitingRooms: counts.waiting,
+    totalConnections: counters.snapshot().totalConnections,
+  };
+};
+
+const closeWithDeadline = async (
+  closing: ReadonlyArray<Promise<void> | undefined>,
+): Promise<void> => {
+  const { promise: deadline, resolve } = Promise.withResolvers<undefined>();
+  const timer = setTimeout(resolve.bind(null, undefined), SHUTDOWN_DEADLINE_MS);
+  try {
+    await Promise.race([
+      Promise.allSettled(closing.filter((pending) => pending !== undefined)),
+      deadline,
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+};
 
 const internalErrorResponse = (): Response => {
   logger.error('uncaught_fetch_error');
@@ -47,15 +76,10 @@ export const startServer = (config: Config): StartedServer => {
   );
   const keepalive = startKeepalive(registry, config.keepaliveIntervalMs);
   const metricsServer = startMetricsServer(config, counters, registry);
-  const aggregate = startAggregateEmitter(() => {
-    const counts = registry.counts();
-    return {
-      ...counts,
-      activeRooms: counts.active,
-      waitingRooms: counts.waiting,
-      totalConnections: counters.snapshot().totalConnections,
-    };
-  }, AGGREGATE_EMIT_INTERVAL_MS);
+  const aggregate = startAggregateEmitter(
+    () => aggregateSnapshot(registry, counters),
+    AGGREGATE_EMIT_INTERVAL_MS,
+  );
 
   const server = Bun.serve({
     port: config.port,
@@ -98,6 +122,12 @@ export const startServer = (config: Config): StartedServer => {
     },
   });
 
+  const pressure = startMemoryPressureRelief(() => {
+    runCleanupTick(registry, config.gracePeriodMs, ipLimiter);
+    server.closeIdleConnections();
+    metricsServer?.closeIdleConnections();
+  });
+
   const boundPort = server.port ?? config.port;
   return {
     url: `ws://${server.hostname}:${boundPort}/ws`,
@@ -105,14 +135,11 @@ export const startServer = (config: Config): StartedServer => {
     metricsPort: metricsServer?.port ?? undefined,
     counters,
     stop: async (): Promise<void> => {
+      pressure.stop();
       cleanup.stop();
       keepalive.stop();
       aggregate.stop();
-      void server.stop(true);
-      if (metricsServer !== null) {
-        void metricsServer.stop(true);
-      }
-      await Promise.resolve();
+      await closeWithDeadline([server.stop(true), metricsServer?.stop(true)]);
     },
   };
 };

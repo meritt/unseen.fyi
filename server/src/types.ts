@@ -7,6 +7,7 @@ export type ConnectionData = {
   roomId: string | undefined;
   role: Role | undefined;
   ip: string;
+  admitted: boolean;
   helloTimer: ReturnType<typeof setTimeout> | undefined;
   relayBucket: RelayBucket;
   handshakeForwards: number;

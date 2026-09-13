@@ -43,6 +43,7 @@ export const ru: Dict = {
       reconnecting: 'Переподключение…',
       reconnectingIn: 'Переподключение через {seconds} с…',
       sessionEnding: 'Сессия завершается…',
+      loadFailed: 'Не удалось загрузить чат. Обновите страницу, чтобы попробовать снова.',
     },
     resumeLocked: {
       title: 'Сессия заблокирована. Подтвердите passkey, чтобы продолжить.',

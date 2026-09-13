@@ -32,6 +32,7 @@ export default defineConfig({
         // browser-agnostic, run once on Chromium
         '**/sri.spec.ts',
         '**/file-csp-worker-src-no-blob.spec.ts',
+        '**/lazy-chunk-failure.spec.ts',
         // Firefox drops document.cookie on unload
         '**/unload-cookie-survival.spec.ts',
         // signalUnknownCredential not in Firefox
@@ -52,6 +53,7 @@ export default defineConfig({
         '**/prf-mode.spec.ts',
         '**/resume.spec.ts',
         '**/sri.spec.ts',
+        '**/lazy-chunk-failure.spec.ts',
         '**/no-storage-wipe-on-unload.spec.ts',
         '**/unload-cookie-survival.spec.ts',
         '**/bfcache.spec.ts',

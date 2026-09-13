@@ -4,33 +4,12 @@ import { decodeServerFrame, encodeHandshake, encodeHello } from '@unseen/shared/
 
 import type { Config } from '../src/config.ts';
 import { DEFAULT_IP_LIMITS } from '../src/ratelimit/ip-limiter.ts';
-import { DEFAULT_RELAY_BUCKET } from '../src/ratelimit/relay-bucket.ts';
 import { sweepRooms } from '../src/room/cleanup.ts';
 import { createRoomRegistry } from '../src/room/registry.ts';
 import { startServer, type StartedServer } from '../src/server.ts';
+import { openWs, testConfig, waitFor } from './_helpers/harness.ts';
 
 const HELLO_TIMEOUT_BYTE = 0x0b;
-
-const TEST_ORIGIN = 'http://localhost';
-
-const baseConfig = (overrides: Partial<Config> = {}): Config => ({
-  port: 0,
-  host: '127.0.0.1',
-  trustedProxyHeader: undefined,
-  allowedOrigins: [TEST_ORIGIN],
-  ipLimits: DEFAULT_IP_LIMITS,
-  relayBucket: DEFAULT_RELAY_BUCKET,
-  clientDistDir: '/tmp',
-  metricsEnabled: false,
-  metricsUser: undefined,
-  metricsPass: undefined,
-  metricsBind: '127.0.0.1',
-  metricsPort: 0,
-  gracePeriodMs: 300_000,
-  sweepIntervalMs: 30_000,
-  keepaliveIntervalMs: 20_000,
-  ...overrides,
-});
 
 const servers: StartedServer[] = [];
 
@@ -44,34 +23,6 @@ const launch = (config: Config): StartedServer => {
   return started;
 };
 
-const openSocket = async (url: string): Promise<WebSocket> => {
-  const WsCtor = WebSocket as unknown as new (
-    url: string,
-    init: { headers: Record<string, string> },
-  ) => WebSocket;
-  const ws = new WsCtor(url, { headers: { Origin: TEST_ORIGIN } });
-  ws.binaryType = 'arraybuffer';
-  await new Promise<void>((resolve, reject) => {
-    ws.addEventListener('open', () => resolve(), { once: true });
-    ws.addEventListener('error', () => reject(new Error('ws error')), { once: true });
-  });
-  return ws;
-};
-
-const waitFor = async <T>(predicate: () => T | undefined, timeoutMs = 1000): Promise<T> => {
-  const deadline = performance.now() + timeoutMs;
-  while (performance.now() < deadline) {
-    const found = predicate();
-    if (found !== undefined) {
-      return found;
-    }
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, 20);
-    });
-  }
-  throw new Error('waitFor timed out');
-};
-
 const makeRoomId = (seed: number): Uint8Array<ArrayBuffer> => {
   const id = new Uint8Array(16);
   for (let i = 0; i < id.length; i++) {
@@ -83,16 +34,16 @@ const makeRoomId = (seed: number): Uint8Array<ArrayBuffer> => {
 describe('per-IP rate limiting', () => {
   test('connect bucket of 2 rejects the third upgrade with RATE_LIMITED', async () => {
     const server = launch(
-      baseConfig({
+      testConfig({
         ipLimits: {
           ...DEFAULT_IP_LIMITS,
           connect: { limit: 2, refillPerSec: 0 },
         },
       }),
     );
-    const wsA = await openSocket(server.url);
-    const wsB = await openSocket(server.url);
-    const wsC = await openSocket(server.url);
+    const wsA = await openWs(server.url);
+    const wsB = await openWs(server.url);
+    const wsC = await openWs(server.url);
     const closedC = await new Promise<{ code: number; reason: string }>((resolve) => {
       wsC.addEventListener('close', (event) => resolve({ code: event.code, reason: event.reason }));
     });
@@ -103,20 +54,20 @@ describe('per-IP rate limiting', () => {
 
   test('newRoom bucket of 1 rejects the second create from the same IP', async () => {
     const server = launch(
-      baseConfig({
+      testConfig({
         ipLimits: {
           ...DEFAULT_IP_LIMITS,
           newRoom: { limit: 1, refillPerSec: 0 },
         },
       }),
     );
-    const wsA = await openSocket(server.url);
+    const wsA = await openWs(server.url);
     wsA.send(encodeHello({ roomId: makeRoomId(1), intent: 'create' }));
     await new Promise<void>((resolve) => {
       wsA.addEventListener('message', () => resolve(), { once: true });
     });
 
-    const wsB = await openSocket(server.url);
+    const wsB = await openWs(server.url);
     const frames: ArrayBuffer[] = [];
     wsB.addEventListener('message', (event) => {
       if (event.data instanceof ArrayBuffer) {
@@ -133,8 +84,8 @@ describe('per-IP rate limiting', () => {
 
 describe('HELLO deadline', () => {
   test('connection that never sends HELLO is closed with HELLO_TIMEOUT', async () => {
-    const server = launch(baseConfig());
-    const ws = await openSocket(server.url);
+    const server = launch(testConfig());
+    const ws = await openWs(server.url);
     const frames: ArrayBuffer[] = [];
     ws.addEventListener('message', (event) => {
       if (event.data instanceof ArrayBuffer) {
@@ -152,7 +103,7 @@ describe('HELLO deadline', () => {
 
 describe('uncaught fetch errors', () => {
   test('uncaught error yields a generic 500 with security headers and no stack', async () => {
-    const server = launch(baseConfig({ trustedProxyHeader: '' }));
+    const server = launch(testConfig({ trustedProxyHeader: '' }));
     const response = await fetch(`http://127.0.0.1:${String(server.port)}/healthz`);
     expect(response.status).toBe(500);
     expect(response.headers.get('content-security-policy')).toContain("default-src 'none'");
@@ -165,10 +116,10 @@ describe('uncaught fetch errors', () => {
 
 describe('HALF_OPEN handshake metering', () => {
   test('survivor flooding HANDSHAKE in HALF_OPEN is RATE_LIMITED once the relay bucket drains', async () => {
-    const server = launch(baseConfig({ relayBucket: { limit: 2, refillPerSec: 0 } }));
+    const server = launch(testConfig({ relayBucket: { limit: 2, refillPerSec: 0 } }));
     const roomId = makeRoomId(31);
-    const alice = await openSocket(server.url);
-    const bob = await openSocket(server.url);
+    const alice = await openWs(server.url);
+    const bob = await openWs(server.url);
 
     const aliceFrames: ArrayBuffer[] = [];
     let aliceClose: { code: number; reason: string } | undefined;

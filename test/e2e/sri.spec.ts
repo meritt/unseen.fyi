@@ -1,102 +1,17 @@
-import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
-
 import { expect, test } from '@playwright/test';
 
-const THIS_DIR = path.dirname(new URL(import.meta.url).pathname);
-const REPO_ROOT = path.resolve(THIS_DIR, '../..');
-const CLIENT_DIR = path.join(REPO_ROOT, 'client');
-
-let tempDist = '';
-let prodServer: Server | undefined;
-let baseUrl = '';
-
-const runProdBuild = (outDir: string): void => {
-  const buildResult = spawnSync('bun', ['run', 'build.ts'], {
-    cwd: CLIENT_DIR,
-    env: { ...process.env, NODE_ENV: 'production', UNSEEN_DIST_DIR: outDir },
-    stdio: 'inherit',
-  });
-  if (buildResult.status !== 0) {
-    throw new Error(`prod build failed with code ${String(buildResult.status)}`);
-  }
-};
-
-const sendFile = (res: ServerResponse, filePath: string): void => {
-  const ext = path.extname(filePath);
-  const map: Readonly<Record<string, string>> = {
-    '.html': 'text/html; charset=utf-8',
-    '.js': 'text/javascript; charset=utf-8',
-    '.css': 'text/css; charset=utf-8',
-    '.map': 'application/json; charset=utf-8',
-  };
-  const contentType = map[ext] ?? 'application/octet-stream';
-  res.writeHead(200, { 'content-type': contentType });
-  res.end(readFileSync(filePath));
-};
-
-const serveDist = (distDir: string): Promise<Server> =>
-  new Promise((resolve) => {
-    const server = createServer((req: IncomingMessage, res: ServerResponse) => {
-      const url = new URL(req.url ?? '/', 'http://localhost');
-      const SPA_ROUTES: Readonly<Record<string, string>> = {
-        '/': '/index.html',
-        '/r402': '/r402.html',
-      };
-      const pathname = SPA_ROUTES[url.pathname] ?? url.pathname;
-      const target = path.join(distDir, pathname);
-      if (!target.startsWith(distDir)) {
-        res.writeHead(404);
-        res.end('Not found');
-        return;
-      }
-      try {
-        statSync(target);
-        sendFile(res, target);
-      } catch {
-        res.writeHead(404);
-        res.end('Not found');
-      }
-    });
-    server.listen(0, '127.0.0.1', () => resolve(server));
-  });
+import { useProdDist } from './fixtures/prod-dist.ts';
 
 test.describe.configure({ mode: 'serial' });
 
-test.beforeAll(async ({ browserName }) => {
-  test.skip(browserName !== 'chromium', 'SRI suite runs once on Chromium');
-  tempDist = mkdtempSync(path.join(tmpdir(), 'unseen-prod-dist-'));
-  runProdBuild(tempDist);
-  prodServer = await serveDist(tempDist);
-  const address = prodServer.address();
-  if (address === null || typeof address === 'string') {
-    throw new Error('unable to determine server port');
-  }
-  baseUrl = `http://127.0.0.1:${String(address.port)}`;
-});
-
-test.afterAll(async () => {
-  if (prodServer !== undefined) {
-    await new Promise<void>((resolve) => {
-      prodServer?.close(() => resolve());
-    });
-    prodServer = undefined;
-  }
-  if (tempDist !== '') {
-    rmSync(tempDist, { recursive: true, force: true });
-    tempDist = '';
-  }
-});
+const prodDist = useProdDist('SRI suite runs once on Chromium');
 
 test('asset inventory: integrity + crossorigin on every script and stylesheet', async ({
   page,
   browserName,
 }) => {
   test.skip(browserName !== 'chromium', 'SRI suite runs once on Chromium');
-  await page.goto(baseUrl);
+  await page.goto(prodDist().baseUrl);
   await page.waitForLoadState('domcontentloaded');
 
   const inventory = await page.evaluate(() => {
@@ -156,7 +71,7 @@ test('sri-mismatch: mutated main bundle is blocked by the browser', async ({
     }
   });
 
-  await page.goto(baseUrl, { waitUntil: 'load' });
+  await page.goto(prodDist().baseUrl, { waitUntil: 'load' });
   await page.waitForTimeout(500);
 
   const bodyState = await page.evaluate(() => ({

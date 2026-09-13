@@ -6,6 +6,7 @@ import { loadConfig } from '../src/config.ts';
 import { pingAll, startKeepalive } from '../src/room/keepalive.ts';
 import { createRoomRegistry } from '../src/room/registry.ts';
 import type { ConnectionData } from '../src/types.ts';
+import { withEnv } from './_helpers/harness.ts';
 
 type PingingWs = ServerWebSocket<ConnectionData> & { pings: number };
 
@@ -24,24 +25,6 @@ const stubWs = (opts: { readonly throws?: boolean } = {}): PingingWs => {
     },
   } as unknown as PingingWs;
   return ws;
-};
-
-const withKeepaliveEnv = (value: string | undefined, run: () => void): void => {
-  const original = Bun.env.UNSEEN_WS_KEEPALIVE_MS;
-  if (value === undefined) {
-    delete Bun.env.UNSEEN_WS_KEEPALIVE_MS;
-  } else {
-    Bun.env.UNSEEN_WS_KEEPALIVE_MS = value;
-  }
-  try {
-    run();
-  } finally {
-    if (original === undefined) {
-      delete Bun.env.UNSEEN_WS_KEEPALIVE_MS;
-    } else {
-      Bun.env.UNSEEN_WS_KEEPALIVE_MS = original;
-    }
-  }
 };
 
 describe('keepalive pingAll', () => {
@@ -99,21 +82,49 @@ describe('startKeepalive', () => {
 });
 
 describe('keepalive configuration', () => {
-  test('loadConfig defaults UNSEEN_WS_KEEPALIVE_MS to 20000', () => {
-    withKeepaliveEnv(undefined, () => {
+  test('loadConfig defaults UNSEEN_WS_KEEPALIVE_MS to 20000', async () => {
+    await withEnv({ UNSEEN_WS_KEEPALIVE_MS: undefined }, () => {
       expect(loadConfig().keepaliveIntervalMs).toBe(20_000);
     });
   });
 
-  test('loadConfig honours a UNSEEN_WS_KEEPALIVE_MS override', () => {
-    withKeepaliveEnv('15000', () => {
+  test('loadConfig honours a UNSEEN_WS_KEEPALIVE_MS override', async () => {
+    await withEnv({ UNSEEN_WS_KEEPALIVE_MS: '15000' }, () => {
       expect(loadConfig().keepaliveIntervalMs).toBe(15_000);
     });
   });
 
-  test('loadConfig rejects a non-positive UNSEEN_WS_KEEPALIVE_MS', () => {
-    withKeepaliveEnv('0', () => {
+  test('loadConfig rejects a non-positive UNSEEN_WS_KEEPALIVE_MS', async () => {
+    await withEnv({ UNSEEN_WS_KEEPALIVE_MS: '0' }, () => {
       expect(() => loadConfig()).toThrow(/UNSEEN_WS_KEEPALIVE_MS/u);
+    });
+  });
+
+  test('loadConfig rejects an interval past the timer range, which clamps to 1ms', async () => {
+    await withEnv({ UNSEEN_WS_KEEPALIVE_MS: '2147483648' }, () => {
+      expect(() => loadConfig()).toThrow(/UNSEEN_WS_KEEPALIVE_MS/u);
+    });
+  });
+});
+
+describe('rate-limit configuration', () => {
+  test('loadConfig rejects a non-numeric per-IP limit instead of failing open', async () => {
+    await withEnv({ UNSEEN_RL_CONNECT_LIMIT: 'many' }, () => {
+      expect(() => loadConfig()).toThrow(/UNSEEN_RL_CONNECT_LIMIT/u);
+    });
+  });
+
+  test('loadConfig rejects a non-numeric RELAY bucket refill instead of failing open', async () => {
+    await withEnv({ UNSEEN_RL_RELAY_REFILL_PER_SEC: 'fast' }, () => {
+      expect(() => loadConfig()).toThrow(/UNSEEN_RL_RELAY_REFILL_PER_SEC/u);
+    });
+  });
+
+  test('loadConfig honours numeric per-IP and RELAY overrides', async () => {
+    await withEnv({ UNSEEN_RL_CONNECT_LIMIT: '7', UNSEEN_RL_RELAY_REFILL_PER_SEC: '0' }, () => {
+      const config = loadConfig();
+      expect(config.ipLimits.connect.limit).toBe(7);
+      expect(config.relayBucket.refillPerSec).toBe(0);
     });
   });
 });

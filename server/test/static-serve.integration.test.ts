@@ -5,9 +5,9 @@ import path from 'node:path';
 
 import type { Config } from '../src/config.ts';
 import { DEFAULT_IP_LIMITS } from '../src/ratelimit/ip-limiter.ts';
-import { DEFAULT_RELAY_BUCKET } from '../src/ratelimit/relay-bucket.ts';
 import { startServer, type StartedServer } from '../src/server.ts';
 import { SECURITY_HEADERS } from '../src/static/headers.ts';
+import { testConfig } from './_helpers/harness.ts';
 
 const INDEX_HTML =
   '<!doctype html><html><head><title>Unseen</title></head><body><main>landing</main></body></html>';
@@ -19,24 +19,8 @@ const FAVICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg"/>';
 let fixtureDir: string;
 let server: StartedServer;
 
-const baseConfig = (overrides: Partial<Config> = {}): Config => ({
-  port: 0,
-  host: '127.0.0.1',
-  trustedProxyHeader: undefined,
-  allowedOrigins: ['http://localhost'],
-  ipLimits: DEFAULT_IP_LIMITS,
-  relayBucket: DEFAULT_RELAY_BUCKET,
-  clientDistDir: fixtureDir,
-  metricsEnabled: false,
-  metricsUser: undefined,
-  metricsPass: undefined,
-  metricsBind: '127.0.0.1',
-  metricsPort: 0,
-  gracePeriodMs: 300_000,
-  sweepIntervalMs: 30_000,
-  keepaliveIntervalMs: 20_000,
-  ...overrides,
-});
+const baseConfig = (overrides: Partial<Config> = {}): Config =>
+  testConfig({ clientDistDir: fixtureDir, ...overrides });
 
 const baseUrl = (): string => `http://${server.url.replace(/^ws:\/\//u, '').replace(/\/ws$/u, '')}`;
 

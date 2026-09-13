@@ -1,31 +1,18 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import { readStoredSession } from '../src/storage/session-store.ts';
+import { installSessionStorage } from './_helpers/session-storage.ts';
 
 const KEY = 'unseen-test-session';
 
-class MemoryStorage {
-  private readonly map = new Map<string, string>();
-  getItem(key: string): string | null {
-    return this.map.has(key) ? (this.map.get(key) ?? null) : null;
-  }
-  setItem(key: string, value: string): void {
-    this.map.set(key, value);
-  }
-  removeItem(key: string): void {
-    this.map.delete(key);
-  }
-}
-
-let original: unknown;
+let restore: () => void;
 
 beforeEach(() => {
-  original = (globalThis as { sessionStorage?: unknown }).sessionStorage;
-  (globalThis as { sessionStorage?: unknown }).sessionStorage = new MemoryStorage();
+  restore = installSessionStorage();
 });
 
 afterEach(() => {
-  (globalThis as { sessionStorage?: unknown }).sessionStorage = original;
+  restore();
 });
 
 const put = (record: Record<string, unknown>): void => {

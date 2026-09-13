@@ -4,19 +4,9 @@ import type { ServerWebSocket } from 'bun';
 
 import { addPeer, createRoomRegistry, getPeer, hasFreeSlot } from '../src/room/registry.ts';
 import type { ConnectionData } from '../src/types.ts';
+import { stubWs as makeStub } from './_helpers/harness.ts';
 
-const stubWs = (): ServerWebSocket<ConnectionData> =>
-  ({
-    data: {
-      state: 'PENDING_HELLO',
-      roomId: undefined,
-      role: undefined,
-      mode: undefined,
-      ip: '127.0.0.1',
-      helloTimer: undefined,
-      relayBucket: { tokens: 60, lastRefillMs: 0 },
-    },
-  }) as unknown as ServerWebSocket<ConnectionData>;
+const stubWs = (): ServerWebSocket<ConnectionData> => makeStub().ws;
 
 describe('room registry', () => {
   test('create marks initiator and WAITING state', () => {

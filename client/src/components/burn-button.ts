@@ -81,10 +81,12 @@ export class BurnButton extends LitElement {
         @click=${this.#onClick}
       >
         <svg class="burn-button__icon" viewBox="0 0 20 20" aria-hidden="true">${flameIcon}</svg>
-        ${this._armed
-          ? html`<span>${armedLabel}</span>`
-          : html`<span class="burn-button__label burn-button__label--full">${fullLabel}</span>
-              <span class="burn-button__label burn-button__label--short">${shortLabel}</span>`}
+        ${
+          this._armed
+            ? html`<span>${armedLabel}</span>`
+            : html`<span class="burn-button__label burn-button__label--full">${fullLabel}</span>
+                <span class="burn-button__label burn-button__label--short">${shortLabel}</span>`
+        }
       </button>
     `;
   }

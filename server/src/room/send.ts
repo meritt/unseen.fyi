@@ -7,9 +7,9 @@ import type { ConnectionData } from '../types.ts';
 
 export type SendStatus = 'sent' | 'queued' | 'dropped';
 
-const WS_CLOSE_POLICY_VIOLATION = 1008;
-const WS_CLOSE_MESSAGE_TOO_LARGE = 1009;
-const WS_CLOSE_INTERNAL = 1011;
+export const WS_CLOSE_POLICY_VIOLATION = 1008;
+export const WS_CLOSE_MESSAGE_TOO_LARGE = 1009;
+export const WS_CLOSE_INTERNAL = 1011;
 
 const classify = (returned: number): SendStatus => {
   if (returned === 0) {
