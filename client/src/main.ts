@@ -10,6 +10,7 @@ import {
   sessionReceivedBytes,
   transferActive,
 } from './domain/file-state.ts';
+import { t } from './i18n/lang.ts';
 import { installBFCacheGuard } from './lifecycle/bfcache.ts';
 import { installPageHideTracker } from './lifecycle/page-hide.ts';
 import { installTitleFaviconInvariant } from './lifecycle/title-favicon.ts';
@@ -85,9 +86,39 @@ const mountForRoute = async (): Promise<void> => {
   }
 };
 
-globalThis.addEventListener('hashchange', () => void mountForRoute());
-globalThis.addEventListener('popstate', () => void mountForRoute());
-void mountForRoute();
+const LOAD_FAILED = 'LOAD_FAILED';
+
+const showViewFailure = (): void => {
+  const shell = globalThis.document.querySelector<HTMLElement>('main.chat');
+  if (shell === null) {
+    return;
+  }
+  shell.dataset.state = LOAD_FAILED;
+  const status = shell.querySelector<HTMLElement>('.sr-only[data-state]');
+  if (status !== null) {
+    status.dataset.state = LOAD_FAILED;
+    status.textContent = LOAD_FAILED;
+  }
+  const placeholder = shell.querySelector('.chat__placeholder');
+  if (placeholder !== null) {
+    placeholder.textContent = t('chat.placeholder.loadFailed');
+  }
+};
+
+const mount = (): void => {
+  void (async (): Promise<void> => {
+    try {
+      await mountForRoute();
+    } catch (cause) {
+      globalThis.console.error('[unseen] view mount failed:', cause);
+      showViewFailure();
+    }
+  })();
+};
+
+globalThis.addEventListener('hashchange', mount);
+globalThis.addEventListener('popstate', mount);
+mount();
 
 if (__UNSEEN_DEV__) {
   Object.assign(globalThis, {

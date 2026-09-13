@@ -3,47 +3,8 @@ import { describe, expect, test } from 'bun:test';
 import { loadConfig } from '../src/config.ts';
 import { createMetricsCounters } from '../src/metrics/counters.ts';
 import { startMetricsServer } from '../src/metrics/server.ts';
-import { DEFAULT_IP_LIMITS } from '../src/ratelimit/ip-limiter.ts';
-import { DEFAULT_RELAY_BUCKET } from '../src/ratelimit/relay-bucket.ts';
 import { createRoomRegistry } from '../src/room/registry.ts';
-
-const withEnv = async <T>(
-  env: Readonly<Record<string, string | undefined>>,
-  fn: () => Promise<T> | T,
-): Promise<T> => {
-  const target = Bun.env as Record<string, string | undefined>;
-  const original: Record<string, string | undefined> = {};
-  for (const key of Object.keys(env)) {
-    original[key] = target[key];
-    const v = env[key];
-    target[key] = v ?? '';
-  }
-  try {
-    return await fn();
-  } finally {
-    for (const [key, value] of Object.entries(original)) {
-      target[key] = value ?? '';
-    }
-  }
-};
-
-const baseConfig = () => ({
-  port: 0,
-  host: '127.0.0.1',
-  trustedProxyHeader: undefined,
-  allowedOrigins: undefined,
-  ipLimits: DEFAULT_IP_LIMITS,
-  relayBucket: DEFAULT_RELAY_BUCKET,
-  clientDistDir: '/tmp',
-  metricsEnabled: false,
-  metricsUser: undefined as string | undefined,
-  metricsPass: undefined as string | undefined,
-  metricsBind: '127.0.0.1',
-  metricsPort: 0,
-  gracePeriodMs: 300_000,
-  sweepIntervalMs: 30_000,
-  keepaliveIntervalMs: 20_000,
-});
+import { testConfig, withEnv } from './_helpers/harness.ts';
 
 describe('loadConfig metrics gating', () => {
   test('UNSEEN_METRICS_ENABLED=true without USER/PASS throws', async () => {
@@ -96,7 +57,7 @@ describe('startMetricsServer', () => {
   test('returns null when metrics disabled', () => {
     const counters = createMetricsCounters();
     const registry = createRoomRegistry();
-    const server = startMetricsServer(baseConfig(), counters, registry);
+    const server = startMetricsServer(testConfig(), counters, registry);
     expect(server).toBeNull();
   });
 
@@ -105,12 +66,11 @@ describe('startMetricsServer', () => {
     counters.incConnection();
     counters.incRelay();
     const registry = createRoomRegistry();
-    const config = {
-      ...baseConfig(),
+    const config = testConfig({
       metricsEnabled: true,
       metricsUser: 'observer',
       metricsPass: 'opensesame',
-    };
+    });
     const server = startMetricsServer(config, counters, registry);
     if (server === null) {
       throw new Error('expected metrics server to start');
@@ -126,6 +86,10 @@ describe('startMetricsServer', () => {
       expect(body).toContain('unseen_active_rooms');
       expect(body).toContain('unseen_connections_total 1');
       expect(body).toContain('unseen_relays_total 1');
+      expect(body).toContain('unseen_capacity_rejections_total 0');
+      const memory = /^unseen_memory_bytes (?<bytes>\d+)$/mu.exec(body)?.groups?.bytes;
+      expect(memory).toBeDefined();
+      expect(Number(memory)).toBeGreaterThan(0);
     } finally {
       server.stop(true);
     }
@@ -134,12 +98,11 @@ describe('startMetricsServer', () => {
   test('rejects requests without credentials', async () => {
     const counters = createMetricsCounters();
     const registry = createRoomRegistry();
-    const config = {
-      ...baseConfig(),
+    const config = testConfig({
       metricsEnabled: true,
       metricsUser: 'observer',
       metricsPass: 'opensesame',
-    };
+    });
     const server = startMetricsServer(config, counters, registry);
     if (server === null) {
       throw new Error('expected metrics server to start');
@@ -159,12 +122,11 @@ describe('startMetricsServer', () => {
   test('rejects wrong credentials', async () => {
     const counters = createMetricsCounters();
     const registry = createRoomRegistry();
-    const config = {
-      ...baseConfig(),
+    const config = testConfig({
       metricsEnabled: true,
       metricsUser: 'observer',
       metricsPass: 'opensesame',
-    };
+    });
     const server = startMetricsServer(config, counters, registry);
     if (server === null) {
       throw new Error('expected metrics server to start');
@@ -183,12 +145,11 @@ describe('startMetricsServer', () => {
   test('binds to 127.0.0.1 by default (not externally reachable)', () => {
     const counters = createMetricsCounters();
     const registry = createRoomRegistry();
-    const config = {
-      ...baseConfig(),
+    const config = testConfig({
       metricsEnabled: true,
       metricsUser: 'observer',
       metricsPass: 'opensesame',
-    };
+    });
     const server = startMetricsServer(config, counters, registry);
     try {
       expect(server?.hostname).toBe('127.0.0.1');
@@ -200,12 +161,11 @@ describe('startMetricsServer', () => {
   test('non-/metrics paths return 404 on the metrics port', async () => {
     const counters = createMetricsCounters();
     const registry = createRoomRegistry();
-    const config = {
-      ...baseConfig(),
+    const config = testConfig({
       metricsEnabled: true,
       metricsUser: 'observer',
       metricsPass: 'opensesame',
-    };
+    });
     const server = startMetricsServer(config, counters, registry);
     if (server === null) {
       throw new Error('expected metrics server to start');

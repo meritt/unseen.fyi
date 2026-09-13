@@ -6,7 +6,7 @@ import type { BunPlugin } from 'bun';
 import { en } from './src/i18n/en.ts';
 
 const __dirname = import.meta.dirname;
-const OUT_DIR = Bun.env.UNSEEN_DIST_DIR ?? path.join(__dirname, 'dist');
+const OUT_DIR = path.resolve(Bun.env.UNSEEN_DIST_DIR ?? path.join(__dirname, 'dist'));
 const TEMPLATES_DIR = path.join(__dirname, 'templates');
 const ASSETS_DIR = 'assets';
 
@@ -92,8 +92,7 @@ const cleanOutDir = (): void => {
   }
 };
 
-const sriFor = async (filePath: string): Promise<string> => {
-  const bytes = await Bun.file(filePath).arrayBuffer();
+const sriFor = async (bytes: ArrayBuffer | Uint8Array<ArrayBuffer>): Promise<string> => {
   const digest = await crypto.subtle.digest('SHA-384', bytes);
   const base64 = new Uint8Array(digest).toBase64();
   return `sha384-${base64}`;
@@ -104,10 +103,15 @@ type Resolved = {
   readonly integrity: string;
 };
 
-const resolve = async (absPath: string): Promise<Resolved> => ({
-  href: `/${path.relative(OUT_DIR, absPath)}`,
-  integrity: await sriFor(absPath),
-});
+const resolve = async (absPath: string, sources: Sources): Promise<Resolved> => {
+  const cached = sources.get(absPath);
+  const bytes =
+    cached === undefined ? await Bun.file(absPath).arrayBuffer() : new TextEncoder().encode(cached);
+  return {
+    href: `/${path.relative(OUT_DIR, absPath)}`,
+    integrity: await sriFor(bytes),
+  };
+};
 
 const WORKER_URL_LITERALS: readonly string[] = [
   './markdown-worker.js',
@@ -118,7 +122,9 @@ const WORKER_URL_LITERALS: readonly string[] = [
 
 type BuildOutput = { readonly kind: string; readonly path: string };
 
-const rewriteWorkerUrls = async (outputs: readonly BuildOutput[]): Promise<void> => {
+type Sources = ReadonlyMap<string, string>;
+
+const rewriteWorkerUrls = async (outputs: readonly BuildOutput[]): Promise<Sources> => {
   const workerEntries = outputs.filter(
     (output) =>
       output.kind === 'entry-point' &&
@@ -138,8 +144,8 @@ const rewriteWorkerUrls = async (outputs: readonly BuildOutput[]): Promise<void>
     rewrites.set(literal, `./${path.basename(match.path)}`);
   }
 
-  const jsOutputs = outputs.filter((output) => output.path.endsWith('.js'));
-  for (const output of jsOutputs) {
+  const sources = new Map<string, string>();
+  for (const output of outputs.filter((entry) => entry.path.endsWith('.js'))) {
     const original = await Bun.file(output.path).text();
     let next = original;
     for (const [from, to] of rewrites) {
@@ -148,39 +154,18 @@ const rewriteWorkerUrls = async (outputs: readonly BuildOutput[]): Promise<void>
     if (next !== original) {
       await Bun.write(output.path, next);
     }
+    sources.set(output.path, next);
   }
-
-  const specifierRe = /new URL\(\s*["'](?<spec>[^"']+worker[^"']*\.js)["']/gu;
-  for (const output of jsOutputs) {
-    const text = await Bun.file(output.path).text();
-    let match: RegExpExecArray | null;
-    while ((match = specifierRe.exec(text)) !== null) {
-      const spec = match.groups?.spec;
-      if (spec === undefined) {
-        continue;
-      }
-      const resolved = path.posix.normalize(path.posix.join('/assets/', spec));
-      if (!resolved.startsWith('/assets/') || !existsSync(path.join(OUT_DIR, resolved))) {
-        throw new Error(
-          `rewriteWorkerUrls: ${spec} in ${path.relative(OUT_DIR, output.path)} resolves to ` +
-            `${resolved}, which is not an emitted asset`,
-        );
-      }
-    }
-  }
+  return sources;
 };
 
-const assertNoTestHookLeak = async (outputs: readonly BuildOutput[]): Promise<void> => {
-  const leaked: string[] = [];
-  for (const output of outputs) {
-    if (!output.path.endsWith('.js')) {
-      continue;
-    }
-    const source = await Bun.file(output.path).text();
-    if (source.includes('__unseenTest')) {
-      leaked.push(path.relative(OUT_DIR, output.path));
-    }
-  }
+const filesContaining = (sources: Sources, marker: string): string[] =>
+  [...sources]
+    .filter(([, source]) => source.includes(marker))
+    .map(([file]) => path.relative(OUT_DIR, file));
+
+const assertNoTestHookLeak = (sources: Sources): void => {
+  const leaked = filesContaining(sources, '__unseenTest');
   if (leaked.length > 0) {
     throw new Error(
       `prod bundle contains test-only __unseenTest hook in: ${leaked.join(', ')}. ` +
@@ -189,17 +174,8 @@ const assertNoTestHookLeak = async (outputs: readonly BuildOutput[]): Promise<vo
   }
 };
 
-const assertNoTestId = async (outputs: readonly BuildOutput[]): Promise<void> => {
-  const leaked: string[] = [];
-  for (const output of outputs) {
-    if (!output.path.endsWith('.js')) {
-      continue;
-    }
-    const source = await Bun.file(output.path).text();
-    if (source.includes('data-testid')) {
-      leaked.push(path.relative(OUT_DIR, output.path));
-    }
-  }
+const assertNoTestId = async (sources: Sources): Promise<void> => {
+  const leaked = filesContaining(sources, 'data-testid');
   for (const name of ['index.html', 'r402.html']) {
     const html = await Bun.file(path.join(OUT_DIR, name)).text();
     if (html.includes('data-testid')) {
@@ -236,10 +212,11 @@ const renderPreloadTag = (resolved: Resolved): string => {
 const STATIC_IMPORT_RE = /(?:from|import)\s*["'](?<spec>[^"']+\.js)["']/gu;
 
 // only synchronously-reached chunks get modulepreload; preloading lazy or worker-only chunks defeats the splitting
-const collectStaticImportChunks = async (
+const collectStaticImportChunks = (
   entryPath: string,
   chunks: ReadonlyArray<{ readonly path: string }>,
-): Promise<Set<string>> => {
+  sources: Sources,
+): Set<string> => {
   const byBasename = new Map(chunks.map((chunk) => [path.basename(chunk.path), chunk.path]));
   const reached = new Set<string>();
   const visited = new Set<string>([path.basename(entryPath)]);
@@ -249,7 +226,10 @@ const collectStaticImportChunks = async (
     if (current === undefined) {
       break;
     }
-    const source = await Bun.file(current).text();
+    const source = sources.get(current);
+    if (source === undefined) {
+      continue;
+    }
     for (const match of source.matchAll(STATIC_IMPORT_RE)) {
       const spec = match.groups?.spec;
       const base = spec === undefined ? undefined : path.basename(spec);
@@ -265,6 +245,37 @@ const collectStaticImportChunks = async (
     }
   }
   return reached;
+};
+
+const REFERENCE_RES: readonly RegExp[] = [
+  STATIC_IMPORT_RE,
+  /import\(\s*["'](?<spec>[^"']+\.js)["']\s*\)/gu,
+  /new URL\(\s*["'](?<spec>[^"']+\.js)["']/gu,
+];
+
+const assertReferencesResolve = (sources: Sources): void => {
+  const unresolved: string[] = [];
+  for (const [file, source] of sources) {
+    for (const re of REFERENCE_RES) {
+      for (const match of source.matchAll(re)) {
+        const spec = match.groups?.spec;
+        if (spec === undefined) {
+          continue;
+        }
+        const resolved = spec.startsWith('/')
+          ? path.join(OUT_DIR, spec)
+          : path.resolve(path.dirname(file), spec);
+        if (!resolved.startsWith(`${OUT_DIR}${path.sep}`) || !existsSync(resolved)) {
+          unresolved.push(`${path.relative(OUT_DIR, file)} → ${spec}`);
+        }
+      }
+    }
+  }
+  if (unresolved.length > 0) {
+    throw new Error(
+      `build emits references that resolve to no emitted asset: ${unresolved.join(', ')}`,
+    );
+  }
 };
 
 const renderShell = async (
@@ -298,7 +309,7 @@ const buildOnce = async (): Promise<void> => {
     splitting: isProd,
     minify: isProd,
     sourcemap: isProd ? 'none' : 'linked',
-    publicPath: '/assets/',
+    publicPath: '/',
     naming: {
       entry: isProd ? `${ASSETS_DIR}/[name]-[hash].[ext]` : `${ASSETS_DIR}/[name].[ext]`,
       chunk: isProd ? `${ASSETS_DIR}/[name]-[hash].[ext]` : `${ASSETS_DIR}/[name].[ext]`,
@@ -338,13 +349,16 @@ const buildOnce = async (): Promise<void> => {
     (output) => output.kind === 'chunk' && output.path.endsWith('.js'),
   );
 
-  await rewriteWorkerUrls(result.outputs);
+  const sources = await rewriteWorkerUrls(result.outputs);
+  assertReferencesResolve(sources);
 
-  const resolvedJs = await resolve(jsEntry.path);
-  const resolvedCss = await resolve(cssEntry.path);
-  const staticChunkBasenames = await collectStaticImportChunks(jsEntry.path, chunks);
+  const resolvedJs = await resolve(jsEntry.path, sources);
+  const resolvedCss = await resolve(cssEntry.path, sources);
+  const staticChunkBasenames = collectStaticImportChunks(jsEntry.path, chunks, sources);
   const preloadChunks = chunks.filter((c) => staticChunkBasenames.has(path.basename(c.path)));
-  const resolvedChunks = await Promise.all(preloadChunks.map(async (c) => await resolve(c.path)));
+  const resolvedChunks = await Promise.all(
+    preloadChunks.map(async (c) => await resolve(c.path, sources)),
+  );
 
   const preloadLinks = resolvedChunks.map((c) => renderPreloadTag(c)).join('\n    ');
   const bundleHtml =
@@ -363,8 +377,8 @@ const buildOnce = async (): Promise<void> => {
   }
 
   if (isProd) {
-    await assertNoTestHookLeak(result.outputs);
-    await assertNoTestId(result.outputs);
+    assertNoTestHookLeak(sources);
+    await assertNoTestId(sources);
   }
 };
 

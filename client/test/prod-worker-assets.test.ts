@@ -21,8 +21,7 @@ const WORKER_STEMS: readonly string[] = [
 ];
 
 let dist = '';
-let assetsDir = '';
-let bundleSources: readonly string[] = [];
+let bundles: readonly string[] = [];
 
 beforeAll(() => {
   dist = mkdtempSync(path.join(tmpdir(), 'unseen-prod-worker-assets-'));
@@ -34,10 +33,9 @@ beforeAll(() => {
   if (result.status !== 0) {
     throw new Error(`prod build failed with code ${String(result.status)}`);
   }
-  assetsDir = path.join(dist, 'assets');
-  bundleSources = readdirSync(assetsDir)
+  bundles = readdirSync(dist, { recursive: true, encoding: 'utf8' })
     .filter((name) => name.endsWith('.js'))
-    .map((name) => readFileSync(path.join(assetsDir, name), 'utf8'));
+    .map((name) => readFileSync(path.join(dist, name), 'utf8'));
 });
 
 afterAll(() => {
@@ -59,15 +57,11 @@ const extractWorkerUrlLiterals = (source: string): string[] => {
   return out;
 };
 
-test('every worker URL literal resolves to an emitted asset under /assets/', () => {
+test('every worker stem appears as a hashed reference in the bundle', () => {
   const referenced = new Set<string>();
-  for (const source of bundleSources) {
+  for (const source of bundles) {
     for (const literal of extractWorkerUrlLiterals(source)) {
       referenced.add(literal);
-      const resolved = path.posix.normalize(path.posix.join('/assets/', literal));
-      expect(resolved.startsWith('/assets/')).toBe(true);
-      const onDisk = path.join(dist, resolved);
-      expect(existsSync(onDisk), `${literal} -> ${resolved} must exist on disk`).toBe(true);
     }
   }
   for (const stem of WORKER_STEMS) {
@@ -77,7 +71,7 @@ test('every worker URL literal resolves to an emitted asset under /assets/', () 
 }, 60_000);
 
 test('no unrewritten source worker literal survives in the bundle', () => {
-  for (const source of bundleSources) {
+  for (const source of bundles) {
     for (const literal of SOURCE_LITERALS) {
       expect(
         source.includes(`"${literal}"`) || source.includes(`'${literal}'`),

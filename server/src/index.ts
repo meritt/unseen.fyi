@@ -5,7 +5,7 @@ import { startServer } from './server.ts';
 const config = loadConfig();
 const started = startServer(config);
 
-logger.info('server_started', { port: config.port });
+logger.info('server_started', { port: started.port });
 
 const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
   logger.info('shutdown_signal', { errorClass: signal });
