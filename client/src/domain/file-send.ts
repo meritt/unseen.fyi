@@ -5,7 +5,12 @@ import { CHUNK_HEADER_BYTES, TID_BYTES } from '@unseen/shared/wire/file-frame.ts
 
 import { onPageHide } from '../lifecycle/page-hide.ts';
 import { appendFileMessage, type SystemEventKind } from '../state/message-log.ts';
-import { createWorker } from '../workers/create-worker.ts';
+import {
+  createWorker,
+  shutdownWorker,
+  type WorkerFactory,
+  workerReady,
+} from '../workers/create-worker.ts';
 import { browserClock } from './clock.ts';
 import {
   attachmentMap,
@@ -20,9 +25,6 @@ const VERIFYING_TIMEOUT_MS = 30_000;
 const OUTGOING_BUFFER_SOFT_CAP = 192 * 1024;
 const BACKPRESSURE_POLL_MS = 50;
 const INITIAL_CREDIT = 4;
-const WORKER_CLOSED_TIMEOUT_MS = 500;
-const WORKER_READY_TIMEOUT_MS = 5000;
-const VERIFYING_LIFETIME_MS = 24 * 60 * 60 * 1000;
 
 export type FileEnvelopeFromReceiver = Extract<
   PlaintextEnvelope,
@@ -63,8 +65,6 @@ type WorkerOutMessage =
 
 type PendingChunk = { readonly seq: number; readonly data: ArrayBuffer };
 
-export type WorkerFactory = () => Worker;
-
 const defaultWorkerFactory: WorkerFactory = () =>
   createWorker(new URL('../workers/file-send-worker.js', import.meta.url), { type: 'module' });
 
@@ -83,12 +83,6 @@ const sleep = async (ms: number): Promise<void> => {
   await new Promise<void>((resolve) => {
     globalThis.setTimeout(resolve, ms);
   });
-};
-
-const withTimeout = async <T>(promise: Promise<T>, ms: number, err: string): Promise<T> => {
-  const { promise: timeoutPromise, reject } = Promise.withResolvers<never>();
-  AbortSignal.timeout(ms).addEventListener('abort', () => reject(new Error(err)), { once: true });
-  return await Promise.race([promise, timeoutPromise]);
 };
 
 export const createFileSender = (deps: FileSenderDeps, factory?: WorkerFactory): FileSender => {
@@ -115,14 +109,7 @@ export const createFileSender = (deps: FileSenderDeps, factory?: WorkerFactory):
   const currentActiveTid = (): string | undefined => transferActive.value?.tid;
 
   const requestWorkerShutdown = (worker: Worker): void => {
-    try {
-      worker.postMessage({ kind: 'abort' });
-    } catch {
-      /* already terminated */
-    }
-    globalThis.setTimeout(() => {
-      worker.terminate();
-    }, WORKER_CLOSED_TIMEOUT_MS);
+    shutdownWorker(worker, { kind: 'abort' });
   };
 
   const finishWithEvent = (event: SystemEventKind, worker?: Worker): void => {
@@ -149,7 +136,7 @@ export const createFileSender = (deps: FileSenderDeps, factory?: WorkerFactory):
 
   const handleWorkerFatal = (worker: Worker): void => {
     const current = transferActive.value;
-    if (current === null) {
+    if (current === null || activeWorker !== worker) {
       return;
     }
     sendCancel(current.tid);
@@ -185,11 +172,7 @@ export const createFileSender = (deps: FileSenderDeps, factory?: WorkerFactory):
     }
   };
 
-  const encryptAndSendChunk = async (
-    worker: Worker,
-    tid: string,
-    chunk: PendingChunk,
-  ): Promise<boolean> => {
+  const encryptAndSendChunk = async (worker: Worker, chunk: PendingChunk): Promise<boolean> => {
     const plaintext: Bytes = new Uint8Array(chunk.data);
     const sent = await deps.sendChunk(plaintext);
     if (!sent) {
@@ -219,21 +202,14 @@ export const createFileSender = (deps: FileSenderDeps, factory?: WorkerFactory):
   };
 
   const beginVerifyingPhase = (tid: string, name: string, size: number): void => {
-    const timeout = AbortSignal.timeout(VERIFYING_TIMEOUT_MS);
-    timeout.addEventListener(
+    AbortSignal.timeout(VERIFYING_TIMEOUT_MS).addEventListener(
       'abort',
       () => {
         finalizeVerifyingAsSuccess(tid, name, size);
       },
       { once: true },
     );
-    transferActive.value = {
-      tid,
-      phase: 'verifying',
-      name,
-      size,
-      abort: timeout,
-    };
+    transferActive.value = { tid, phase: 'verifying', name, size };
   };
 
   const finalizeSendAfterDrain = (worker: Worker, tid: string, sha256Hex: string): void => {
@@ -273,7 +249,7 @@ export const createFileSender = (deps: FileSenderDeps, factory?: WorkerFactory):
           await sleep(BACKPRESSURE_POLL_MS);
           continue;
         }
-        const sent = await encryptAndSendChunk(worker, tid, next);
+        const sent = await encryptAndSendChunk(worker, next);
         if (!sent) {
           return;
         }
@@ -281,6 +257,11 @@ export const createFileSender = (deps: FileSenderDeps, factory?: WorkerFactory):
           return;
         }
         advanceSentBytes(tid, next.data.byteLength - CHUNK_HEADER_BYTES);
+      }
+    } catch {
+      if (isStillSendingFor(tid)) {
+        sendCancel(tid);
+        finishWithEvent('file_transfer_failed', worker);
       }
     } finally {
       sendLoopRunning = false;
@@ -296,13 +277,8 @@ export const createFileSender = (deps: FileSenderDeps, factory?: WorkerFactory):
     pendingSha256Hex = sha256Hex;
   };
 
-  const handleWorkerMessage = (
-    msg: WorkerOutMessage,
-    worker: Worker,
-    readyDeferred: PromiseWithResolvers<unknown>,
-  ): void => {
-    if (msg.kind === 'ready') {
-      readyDeferred.resolve(true);
+  const handleWorkerMessage = (msg: WorkerOutMessage, worker: Worker): void => {
+    if (activeWorker !== worker) {
       return;
     }
     if (msg.kind === 'plaintext_chunk') {
@@ -317,7 +293,7 @@ export const createFileSender = (deps: FileSenderDeps, factory?: WorkerFactory):
       handleWorkerFatal(worker);
       return;
     }
-    msg.kind satisfies 'closed';
+    msg.kind satisfies 'ready' | 'closed';
   };
 
   const initialiseWorker = async (
@@ -331,9 +307,8 @@ export const createFileSender = (deps: FileSenderDeps, factory?: WorkerFactory):
       finishWithEvent('file_transfer_failed');
       return undefined;
     }
-    const readyDeferred = Promise.withResolvers<unknown>();
     worker.addEventListener('message', (event: MessageEvent<WorkerOutMessage>) => {
-      handleWorkerMessage(event.data, worker, readyDeferred);
+      handleWorkerMessage(event.data, worker);
     });
     worker.addEventListener('error', () => {
       handleWorkerFatal(worker);
@@ -356,11 +331,11 @@ export const createFileSender = (deps: FileSenderDeps, factory?: WorkerFactory):
       finishWithEvent('file_transfer_failed', worker);
       return undefined;
     }
-    try {
-      await withTimeout(readyDeferred.promise, WORKER_READY_TIMEOUT_MS, 'worker_ready_timeout');
-    } catch {
-      sendCancel(tid);
-      finishWithEvent('file_transfer_failed', worker);
+    if (!(await workerReady(worker))) {
+      if (activeWorker === worker) {
+        sendCancel(tid);
+        finishWithEvent('file_transfer_failed', worker);
+      }
       return undefined;
     }
     return { worker };
@@ -389,7 +364,6 @@ export const createFileSender = (deps: FileSenderDeps, factory?: WorkerFactory):
       size,
       sentBytes: 0,
       worker,
-      abort: AbortSignal.timeout(VERIFYING_LIFETIME_MS),
     };
     if (!sendLoopRunning) {
       void runSendLoop(worker, tid);
@@ -437,8 +411,8 @@ export const createFileSender = (deps: FileSenderDeps, factory?: WorkerFactory):
     finishWithEvent('file_transfer_cancelled');
   };
 
-  const installOfferedTimeout = (tid: string, abort: AbortSignal): void => {
-    abort.addEventListener(
+  const installOfferedTimeout = (tid: string): void => {
+    AbortSignal.timeout(OFFERED_TIMEOUT_MS).addEventListener(
       'abort',
       () => {
         const now = transferActive.value;
@@ -467,15 +441,13 @@ export const createFileSender = (deps: FileSenderDeps, factory?: WorkerFactory):
       return;
     }
     const tid = generateTidHex();
-    const abort = AbortSignal.timeout(OFFERED_TIMEOUT_MS);
-    installOfferedTimeout(tid, abort);
+    installOfferedTimeout(tid);
     transferActive.value = {
       tid,
       phase: 'offered',
       name: sanitised,
       size: file.size,
       file,
-      abort,
     };
     senderFileRef = file;
     appendFileMessage(tid, 'out', browserClock.nowIso());
@@ -522,11 +494,7 @@ export const createFileSender = (deps: FileSenderDeps, factory?: WorkerFactory):
       return;
     }
     if (activeWorker !== undefined) {
-      try {
-        activeWorker.terminate();
-      } catch {
-        /* already terminated */
-      }
+      activeWorker.terminate();
     }
     transferActive.value = null;
     resetLocal();

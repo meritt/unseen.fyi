@@ -131,7 +131,6 @@ describe('dispatchOffer — pre-accept gate', () => {
       name: 'out.bin',
       size: 10,
       file: new File([new Uint8Array(10)], 'out.bin'),
-      abort: AbortSignal.timeout(60_000),
     };
     receiver.dispatchOffer(makeOffer());
     expect(envelopes[0]).toMatchObject({ kind: 'file_decline', reason: 'unsupported' });
@@ -221,9 +220,7 @@ describe('acceptOffer / declineOffer / cancel', () => {
     const worker = new MockWorker();
     const receiver = setupOfferPending(deps, worker);
     const acceptPromise = receiver.acceptOffer();
-    await new Promise<void>((resolve) => {
-      globalThis.setTimeout(resolve, 0);
-    });
+    await Bun.sleep(0);
     worker.simulateMessage({ kind: 'ready' });
     await acceptPromise;
     expect(worker.outbox[0]?.kind).toBe('init');
@@ -243,9 +240,7 @@ describe('acceptOffer / declineOffer / cancel', () => {
 
     const first = receiver.acceptOffer();
     const second = receiver.acceptOffer();
-    await new Promise<void>((resolve) => {
-      globalThis.setTimeout(resolve, 0);
-    });
+    await Bun.sleep(0);
     expect(workers.length).toBe(1);
     workers[0]?.simulateMessage({ kind: 'ready' });
     await Promise.all([first, second]);
@@ -333,6 +328,23 @@ describe('acceptOffer / declineOffer / cancel', () => {
     }
   });
 
+  test('an offer cancelled while its worker starts is never accepted', async () => {
+    const { deps, envelopes, events } = makeDeps();
+    const worker = new MockWorker();
+    const receiver = setupOfferPending(deps, worker);
+
+    const acceptPromise = receiver.acceptOffer();
+    await Bun.sleep(0);
+    receiver.dispatchCancel({ kind: 'file_cancel', tid, side: 'sender', reason: 'user_aborted' });
+    worker.simulateMessage({ kind: 'ready' });
+    await acceptPromise;
+
+    expect(worker.terminated).toBe(true);
+    expect(envelopes.some((envelope) => envelope.kind === 'file_accept')).toBe(false);
+    expect(incomingActive.value).toBeNull();
+    expect(events).toEqual(['file_transfer_cancelled']);
+  });
+
   test('acceptOffer with currentOpaqueDir=undefined → file_decline { unsupported }', async () => {
     const { deps, envelopes } = makeDeps();
     const receiver = setupOfferPending(deps, new MockWorker());
@@ -366,9 +378,7 @@ describe('acceptOffer — worker init failure', () => {
     const tid2 = '2222222222222222';
     receiver.dispatchOffer(makeOffer({ tid: tid2, name: 'file.bin', size: 1024 }));
     const secondAccept = receiver.acceptOffer();
-    await new Promise<void>((resolve) => {
-      globalThis.setTimeout(resolve, 0);
-    });
+    await Bun.sleep(0);
     expect(workers.length).toBe(2);
     workers[1]?.simulateMessage({ kind: 'ready' });
     await secondAccept;
@@ -382,9 +392,7 @@ describe('acceptOffer — worker init failure', () => {
     const receiver = createFileReceiver(deps, () => asWorker(worker));
     receiver.dispatchOffer(makeOffer({ tid, name: 'file.bin', size: 1024 }));
     const acceptPromise = receiver.acceptOffer();
-    await new Promise<void>((resolve) => {
-      globalThis.setTimeout(resolve, 0);
-    });
+    await Bun.sleep(0);
     worker.simulateMessage({ kind: 'fatal', err: 'lock_or_opfs_failed' });
     await acceptPromise;
     expect(worker.terminated).toBe(true);
@@ -398,9 +406,7 @@ describe('acceptOffer — worker init failure', () => {
     const receiver = createFileReceiver(deps, () => asWorker(worker));
     receiver.dispatchOffer(makeOffer({ tid, name: 'file.bin', size: 1024 }));
     const acceptPromise = receiver.acceptOffer();
-    await new Promise<void>((resolve) => {
-      globalThis.setTimeout(resolve, 0);
-    });
+    await Bun.sleep(0);
     worker.dispatchEvent(new Event('error'));
     await acceptPromise;
     expect(worker.terminated).toBe(true);
@@ -425,7 +431,6 @@ describe('chunk path — bounds, queue cap, cancel', () => {
       receiveCredit: 4,
       pendingChunkQueue: [],
       worker: asWorker(worker),
-      abort: AbortSignal.timeout(60_000),
     };
   };
 
@@ -481,7 +486,6 @@ describe('dispatchComplete — early file_complete', () => {
       receiveCredit: 4,
       pendingChunkQueue: [],
       worker: asWorker(worker),
-      abort: AbortSignal.timeout(60_000),
     };
     receiver.dispatchComplete({
       kind: 'file_complete',
@@ -513,7 +517,6 @@ describe('dispatchComplete — early file_complete', () => {
       receiveCredit: 4,
       pendingChunkQueue: [],
       worker: asWorker(worker),
-      abort: AbortSignal.timeout(60_000),
     };
     receiver.dispatchComplete({
       kind: 'file_complete',
@@ -544,7 +547,6 @@ describe('dispatchComplete — early file_complete', () => {
       receiveCredit: 0,
       pendingChunkQueue: [{ seq: 2, data: new ArrayBuffer(8692) }],
       worker: asWorker(worker),
-      abort: AbortSignal.timeout(60_000),
     };
     receiver.dispatchComplete({
       kind: 'file_complete',
@@ -578,7 +580,6 @@ describe('dispatchComplete — early file_complete', () => {
       receiveCredit: 4,
       pendingChunkQueue: [],
       worker: asWorker(worker),
-      abort: AbortSignal.timeout(60_000),
     };
     receiver.dispatchComplete({
       kind: 'file_complete',
@@ -609,7 +610,6 @@ describe('shutdown', () => {
       receiveCredit: 4,
       pendingChunkQueue: [],
       worker: asWorker(worker),
-      abort: AbortSignal.timeout(60_000),
     };
     receiver.shutdown();
     expect(worker.terminated).toBe(true);

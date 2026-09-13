@@ -42,6 +42,7 @@ export const createInitialConnectionData = (ip: string, config: Config): Connect
   roomId: undefined,
   role: undefined,
   ip,
+  admitted: false,
   helloTimer: undefined,
   relayBucket: createRelayBucket(config.relayBucket),
   handshakeForwards: 0,
@@ -297,15 +298,30 @@ const startHelloTimer = (ws: ServerWebSocket<ConnectionData>): void => {
   }, HELLO_DEADLINE_MS);
 };
 
-export const createHandlers = (deps: HandlerDeps): Handlers => ({
-  open: (ws): void => {
-    if (!deps.ipLimiter.check(ws.data.ip, 'connect')) {
-      deps.counters.incRateLimitReject('connect');
-      sendErrorAndClose(ws, 'RATE_LIMITED');
-      return;
-    }
-    startHelloTimer(ws);
-  },
-  message: (ws, data): void => handleMessage(ws, data, deps),
-  close: (ws): void => handleClose(ws, deps),
-});
+export const createHandlers = (deps: HandlerDeps): Handlers => {
+  let openConnections = 0;
+  return {
+    open: (ws): void => {
+      if (!deps.ipLimiter.check(ws.data.ip, 'connect')) {
+        deps.counters.incRateLimitReject('connect');
+        sendErrorAndClose(ws, 'RATE_LIMITED');
+        return;
+      }
+      if (openConnections >= deps.config.maxConnections) {
+        deps.counters.incCapacityReject();
+        sendErrorAndClose(ws, 'OVER_CAPACITY');
+        return;
+      }
+      ws.data.admitted = true;
+      openConnections += 1;
+      startHelloTimer(ws);
+    },
+    message: (ws, data): void => handleMessage(ws, data, deps),
+    close: (ws): void => {
+      if (ws.data.admitted) {
+        openConnections -= 1;
+      }
+      handleClose(ws, deps);
+    },
+  };
+};

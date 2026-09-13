@@ -16,6 +16,26 @@ const closeAll = async (...contexts: readonly BrowserContext[]): Promise<void> =
   await Promise.all(contexts.map(async (ctx) => await ctx.close()));
 };
 
+const captureLockNames = async (page: Page): Promise<void> => {
+  await page.addInitScript(() => {
+    const w = globalThis as unknown as { __lockNames__: string[] };
+    w.__lockNames__ = [];
+    const proto = Object.getPrototypeOf(navigator.locks) as LockManager;
+    const original = proto.request;
+    const patched = {
+      request(this: LockManager, name: string, ...rest: readonly unknown[]): unknown {
+        w.__lockNames__.push(name);
+        return Reflect.apply(original, this, [name, ...rest]);
+      },
+    };
+    Object.defineProperty(proto, 'request', {
+      value: patched.request,
+      writable: true,
+      configurable: true,
+    });
+  });
+};
+
 test('duplicate-tab: opening the same URL in a second tab of the same context terminates the second tab', async ({
   browser,
 }) => {
@@ -59,23 +79,7 @@ test('opaque-lock-name: navigator.locks.request is invoked with a name that does
   const context = await browser.newContext();
   try {
     const alice = await context.newPage();
-    await alice.addInitScript(() => {
-      const w = globalThis as unknown as { __lockNames__: string[] };
-      w.__lockNames__ = [];
-      const proto = Object.getPrototypeOf(navigator.locks) as LockManager;
-      const original = proto.request;
-      const patched = {
-        request(this: LockManager, name: string, ...rest: readonly unknown[]): unknown {
-          w.__lockNames__.push(name);
-          return Reflect.apply(original, this, [name, ...rest]);
-        },
-      };
-      Object.defineProperty(proto, 'request', {
-        value: patched.request,
-        writable: true,
-        configurable: true,
-      });
-    });
+    await captureLockNames(alice);
 
     await alice.goto('/');
     await alice.getByTestId('create-room').click();
@@ -107,25 +111,36 @@ test('lock-released-on-close: closing the holding tab frees the room lock for a 
   const context = await browser.newContext();
   try {
     const first = await context.newPage();
+    await captureLockNames(first);
     await first.goto('/');
     await first.getByTestId('create-room').click();
     await first.waitForURL(/\/r402#[\w-]{43}$/u);
-    const sharedUrl = first.url();
+    await expect(first.getByTestId('status')).toHaveAttribute('data-state', 'WAITING_FOR_PEER', {
+      timeout: 10_000,
+    });
+    const lockKey = await first.evaluate(
+      () => (globalThis as unknown as { __lockNames__: string[] }).__lockNames__[0] ?? '',
+    );
+    expect(lockKey).toMatch(/^[\w-]{11}$/u);
 
-    const dup = await context.newPage();
-    await dup.goto(sharedUrl);
-    await waitForTerminated(dup);
-    await dup.close();
+    const reopen = await context.newPage();
+    await reopen.goto('/');
+    // Rejoining the relay also races the old socket's close; claim the room lock directly.
+    const tryClaim = async (): Promise<boolean> =>
+      await reopen.evaluate(
+        async (name) =>
+          await navigator.locks.request(
+            name,
+            { mode: 'exclusive', ifAvailable: true },
+            (lock) => lock !== null,
+          ),
+        lockKey,
+      );
+    expect(await tryClaim()).toBe(false);
 
     await first.close();
 
-    const reopen = await context.newPage();
-    await reopen.goto(sharedUrl);
-    await expect(reopen.locator('[data-testid="status"]')).not.toHaveAttribute(
-      'data-state',
-      'TERMINATED',
-      { timeout: 10_000 },
-    );
+    await expect.poll(tryClaim, { timeout: 10_000 }).toBe(true);
   } finally {
     await context.close();
   }

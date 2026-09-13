@@ -9,6 +9,8 @@ const HARDENING_HEADERS = {
   'X-Content-Type-Options': 'nosniff',
 } as const;
 
+const memoryFootprint = (): number => Bun.unsafe.memoryFootprint() ?? process.memoryUsage.rss();
+
 const authorize = (request: Request, expected: Uint8Array<ArrayBuffer>): boolean => {
   const header = request.headers.get('authorization');
   if (header === null || header === '') {
@@ -21,34 +23,51 @@ const authorize = (request: Request, expected: Uint8Array<ArrayBuffer>): boolean
   return crypto.timingSafeEqual(presented, expected);
 };
 
+const metric = (name: string, type: 'gauge' | 'counter', help: string, value: number): string =>
+  `# HELP ${name} ${help}\n# TYPE ${name} ${type}\n${name} ${String(value)}\n`;
+
 const renderPrometheus = (counters: MetricsCounters, registry: RoomRegistry): string => {
   const counts = registry.counts();
   const snapshot = counters.snapshot();
   return [
-    '# HELP unseen_active_rooms Currently active (paired) rooms.',
-    '# TYPE unseen_active_rooms gauge',
-    `unseen_active_rooms ${String(counts.active)}`,
-    '',
-    '# HELP unseen_waiting_rooms Rooms waiting for a peer to join.',
-    '# TYPE unseen_waiting_rooms gauge',
-    `unseen_waiting_rooms ${String(counts.waiting)}`,
-    '',
-    '# HELP unseen_half_open_rooms Rooms in the post-disconnect grace window.',
-    '# TYPE unseen_half_open_rooms gauge',
-    `unseen_half_open_rooms ${String(counts.halfOpen)}`,
-    '',
-    '# HELP unseen_connections_total Total WebSocket upgrades since start.',
-    '# TYPE unseen_connections_total counter',
-    `unseen_connections_total ${String(snapshot.totalConnections)}`,
-    '',
-    '# HELP unseen_relays_total RELAY frames forwarded since start.',
-    '# TYPE unseen_relays_total counter',
-    `unseen_relays_total ${String(snapshot.relaysTotal)}`,
-    '',
-    '# HELP unseen_rate_limit_rejections_total Requests rejected by the per-IP rate limiter.',
-    '# TYPE unseen_rate_limit_rejections_total counter',
-    `unseen_rate_limit_rejections_total ${String(snapshot.rateLimitRejections)}`,
-    '',
+    metric(
+      'unseen_memory_bytes',
+      'gauge',
+      'Memory footprint of the relay process in bytes.',
+      memoryFootprint(),
+    ),
+    metric('unseen_active_rooms', 'gauge', 'Currently active (paired) rooms.', counts.active),
+    metric('unseen_waiting_rooms', 'gauge', 'Rooms waiting for a peer to join.', counts.waiting),
+    metric(
+      'unseen_half_open_rooms',
+      'gauge',
+      'Rooms in the post-disconnect grace window.',
+      counts.halfOpen,
+    ),
+    metric(
+      'unseen_connections_total',
+      'counter',
+      'Total WebSocket upgrades since start.',
+      snapshot.totalConnections,
+    ),
+    metric(
+      'unseen_relays_total',
+      'counter',
+      'RELAY frames forwarded since start.',
+      snapshot.relaysTotal,
+    ),
+    metric(
+      'unseen_rate_limit_rejections_total',
+      'counter',
+      'Requests rejected by the per-IP rate limiter.',
+      snapshot.rateLimitRejections,
+    ),
+    metric(
+      'unseen_capacity_rejections_total',
+      'counter',
+      'Connections refused at the relay connection ceiling.',
+      snapshot.capacityRejections,
+    ),
   ].join('\n');
 };
 

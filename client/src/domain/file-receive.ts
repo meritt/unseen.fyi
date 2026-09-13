@@ -4,13 +4,18 @@ import {
   MAX_FILE_SIZE_BYTES,
   SESSION_RECEIVE_CAP_BYTES,
 } from '@unseen/shared/limits.ts';
-import type { PlaintextEnvelope } from '@unseen/shared/wire/envelope.ts';
+import type { FileCancelReason, PlaintextEnvelope } from '@unseen/shared/wire/envelope.ts';
 import { CHUNK_HEADER_BYTES, TID_BYTES } from '@unseen/shared/wire/file-frame.ts';
 
 import { onPageHide } from '../lifecycle/page-hide.ts';
 import { appendFileMessage, type SystemEventKind } from '../state/message-log.ts';
 import { OPFS_LOCK_NAME, currentOpaqueDir } from '../storage/opfs-transfers.ts';
-import { createWorker } from '../workers/create-worker.ts';
+import {
+  createWorker,
+  shutdownWorker,
+  type WorkerFactory,
+  workerReady,
+} from '../workers/create-worker.ts';
 import { browserClock } from './clock.ts';
 import {
   attachmentMap,
@@ -31,8 +36,6 @@ const OFFER_PENDING_TIMEOUT_MS = 60_000;
 const RECV_STALL_TIMEOUT_MS = 30_000;
 const PROGRESS_MIN_INTERVAL_MS = 1000;
 const PROGRESS_MIN_BYTES = 1_048_576;
-const WORKER_CLOSED_TIMEOUT_MS = 500;
-const WORKER_READY_TIMEOUT_MS = 5000;
 
 export type FileEnvelopeToReceiver = Extract<
   PlaintextEnvelope,
@@ -104,8 +107,6 @@ type WorkerOutMessage =
   | WorkerOutFatal
   | WorkerOutClosed;
 
-export type WorkerFactory = () => Worker;
-
 const defaultWorkerFactory: WorkerFactory = () =>
   createWorker(new URL('../workers/file-receive-worker.js', import.meta.url), { type: 'module' });
 
@@ -130,12 +131,6 @@ const expectedChunkLen = (expectedSize: number, seq: number, totalChunks: number
   seq + 1 < totalChunks
     ? CHUNK_DATA_MAX_BYTES
     : expectedSize - CHUNK_DATA_MAX_BYTES * (totalChunks - 1);
-
-const withTimeout = async <T>(promise: Promise<T>, ms: number, err: string): Promise<T> => {
-  const { promise: timeoutPromise, reject } = Promise.withResolvers<never>();
-  AbortSignal.timeout(ms).addEventListener('abort', () => reject(new Error(err)), { once: true });
-  return await Promise.race([promise, timeoutPromise]);
-};
 
 export const createFileReceiver = (
   deps: FileReceiverDeps,
@@ -198,19 +193,7 @@ export const createFileReceiver = (
   };
 
   const requestWorkerShutdown = (worker: Worker, kind: 'finalize' | 'abort'): void => {
-    try {
-      const msg: WorkerInMessage = kind === 'finalize' ? { kind: 'finalize' } : { kind: 'abort' };
-      worker.postMessage(msg);
-    } catch {
-      /* already terminated */
-    }
-    globalThis.setTimeout(() => {
-      try {
-        worker.terminate();
-      } catch {
-        /* already terminated */
-      }
-    }, WORKER_CLOSED_TIMEOUT_MS);
+    shutdownWorker(worker, { kind });
   };
 
   const cleanupOpfs = async (tidHex: string): Promise<void> => {
@@ -227,14 +210,13 @@ export const createFileReceiver = (
     }
   };
 
+  const sendCancel = (tid: string, reason: FileCancelReason): void => {
+    void deps.sendEnvelope({ kind: 'file_cancel', tid, side: 'receiver', reason });
+  };
+
   const integrityFailureAbort = (state: Extract<IncomingState, { phase: 'receiving' }>): void => {
     const { tid } = state;
-    void deps.sendEnvelope({
-      kind: 'file_cancel',
-      tid,
-      side: 'receiver',
-      reason: 'integrity_failure',
-    });
+    sendCancel(tid, 'integrity_failure');
     requestWorkerShutdown(state.worker, 'abort');
     void cleanupOpfs(tid);
     finishTransfer('file_transfer_failed');
@@ -248,13 +230,7 @@ export const createFileReceiver = (
   };
 
   const declineAndReset = (tid: string, worker?: Worker): void => {
-    if (worker !== undefined) {
-      try {
-        worker.terminate();
-      } catch {
-        /* already terminated */
-      }
-    }
+    worker?.terminate();
     sendDecline(tid, 'unsupported');
     incomingActive.value = null;
     resetTransferLocals();
@@ -367,12 +343,7 @@ export const createFileReceiver = (
       msg.fileSize !== expected
     ) {
       const { tid } = state;
-      void deps.sendEnvelope({
-        kind: 'file_cancel',
-        tid,
-        side: 'receiver',
-        reason: 'integrity_failure',
-      });
+      sendCancel(tid, 'integrity_failure');
       await cleanupOpfs(tid);
       finishTransfer('file_transfer_failed');
       return;
@@ -390,23 +361,9 @@ export const createFileReceiver = (
     void deps.sendEnvelope({ kind: 'file_complete_ack', tid: state.tid });
   };
 
-  const handleWorkerMessage = async (
-    msg: WorkerOutMessage,
-    worker: Worker,
-    readyDeferred: PromiseWithResolvers<unknown>,
-  ): Promise<void> => {
+  const handleWorkerMessage = async (msg: WorkerOutMessage, worker: Worker): Promise<void> => {
     const state = getReceivingState();
-    if (msg.kind === 'ready') {
-      readyDeferred.resolve(true);
-      return;
-    }
-    if (msg.kind === 'closed') {
-      return;
-    }
-    if (state === null || state.worker !== worker) {
-      if (msg.kind === 'fatal') {
-        readyDeferred.reject(new Error(msg.err));
-      }
+    if (msg.kind === 'ready' || msg.kind === 'closed' || state?.worker !== worker) {
       return;
     }
     if (msg.kind === 'written') {
@@ -417,11 +374,7 @@ export const createFileReceiver = (
       await handleWorkerDone(state, msg);
       return;
     }
-    if (msg.kind === 'short_write') {
-      integrityFailureAbort(state);
-      return;
-    }
-    msg.kind satisfies 'fatal';
+    msg.kind satisfies 'short_write' | 'fatal';
     integrityFailureAbort(state);
   };
 
@@ -440,12 +393,10 @@ export const createFileReceiver = (
       declineAndReset(state.tid);
       return;
     }
-    const readyDeferred = Promise.withResolvers<unknown>();
     worker.addEventListener('message', (event: MessageEvent<WorkerOutMessage>) => {
-      void handleWorkerMessage(event.data, worker, readyDeferred);
+      void handleWorkerMessage(event.data, worker);
     });
     worker.addEventListener('error', () => {
-      readyDeferred.reject(new Error('worker_error'));
       const current = getReceivingState();
       if (current?.worker === worker) {
         integrityFailureAbort(current);
@@ -464,20 +415,25 @@ export const createFileReceiver = (
       declineAndReset(state.tid, worker);
       return;
     }
-    try {
-      await withTimeout(readyDeferred.promise, WORKER_READY_TIMEOUT_MS, 'worker_ready_timeout');
-    } catch {
+    const ready = await workerReady(worker);
+    if (incomingActive.value !== state) {
+      worker.terminate();
+      void cleanupOpfs(state.tid);
+      return;
+    }
+    if (!ready) {
       declineAndReset(state.tid, worker);
       return;
     }
     clearOfferTimer();
     const sent = await deps.sendEnvelope({ kind: 'file_accept', tid: state.tid });
+    if (incomingActive.value !== state) {
+      worker.terminate();
+      void cleanupOpfs(state.tid);
+      return;
+    }
     if (!sent) {
-      try {
-        worker.terminate();
-      } catch {
-        /* already terminated */
-      }
+      worker.terminate();
       installOfferTimeout(state.tid);
       return;
     }
@@ -493,7 +449,6 @@ export const createFileReceiver = (
       receiveCredit: RECV_INITIAL_CREDIT,
       pendingChunkQueue: [],
       worker,
-      abort: AbortSignal.timeout(24 * 60 * 60 * 1000),
     };
     receiveStallTimer = globalThis.setTimeout(() => {
       receiveStallTimer = undefined;
@@ -536,12 +491,7 @@ export const createFileReceiver = (
       declineOffer();
       return;
     }
-    void deps.sendEnvelope({
-      kind: 'file_cancel',
-      tid: state.tid,
-      side: 'receiver',
-      reason,
-    });
+    sendCancel(state.tid, reason);
     requestWorkerShutdown(state.worker, 'abort');
     void cleanupOpfs(state.tid);
     finishTransfer('file_transfer_cancelled');
@@ -670,20 +620,11 @@ export const createFileReceiver = (
     }
     if (state.phase === 'receiving') {
       try {
-        void deps.sendEnvelope({
-          kind: 'file_cancel',
-          tid: state.tid,
-          side: 'receiver',
-          reason: 'user_aborted',
-        });
+        sendCancel(state.tid, 'user_aborted');
       } catch {
         /* mid-teardown */
       }
-      try {
-        state.worker.terminate();
-      } catch {
-        /* already terminated */
-      }
+      state.worker.terminate();
     }
     incomingActive.value = null;
     resetTransferLocals();
@@ -697,11 +638,7 @@ export const createFileReceiver = (
     if (state.phase !== 'receiving') {
       return;
     }
-    try {
-      state.worker.terminate();
-    } catch {
-      /* already terminated */
-    }
+    state.worker.terminate();
     incomingActive.value = null;
     resetTransferLocals();
     deps.appendSystemEvent('file_transfer_failed');
@@ -711,11 +648,7 @@ export const createFileReceiver = (
     unsubscribePageHide();
     const state = incomingActive.value;
     if (state?.phase === 'receiving') {
-      try {
-        state.worker.terminate();
-      } catch {
-        /* already terminated */
-      }
+      state.worker.terminate();
     }
     incomingActive.value = null;
     resetTransferLocals();

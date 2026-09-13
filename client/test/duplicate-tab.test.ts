@@ -23,7 +23,7 @@ const makeLockManager = (): LockManager => {
   return {
     request,
     query: () => Promise.resolve({ held: [], pending: [] }),
-  } as LockManager;
+  };
 };
 
 const originalLocks = globalThis.navigator.locks;
