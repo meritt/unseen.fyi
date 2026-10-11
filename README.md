@@ -8,7 +8,7 @@ Unseen exists to answer one question: how far does the **native web platform** r
 
 So the constraints are deliberate. One UI dependency (`lit`, for declarative rendering) and one narrow crypto dependency (`@noble/hashes`, only because Web Crypto's `subtle.digest` is one-shot and streaming file integrity needs an incremental SHA-256). Everything else is the platform: Web Crypto, WebAuthn, OPFS, Web Locks, the Navigation and View Transitions APIs, module Workers, and modern CSS. No framework, no polyfills, no transpilation to legacy targets, no compatibility shims.
 
-It targets **Chrome 153, Firefox 155, Safari 26.6**. Many of the capabilities below did not exist, or were not interoperable across all three, a year ago. That is the point.
+It targets **Chrome 155, Firefox 157, Safari 27**. Many of the capabilities below did not exist, or were not interoperable across all three, a year ago. That is the point.
 
 ## Status and intended use
 
@@ -63,7 +63,7 @@ server/   Bun.serve relay, room registry, rate limiting, metrics, static serving
 test/     e2e/ (Playwright cross-browser), perf/ (Lighthouse + gzip budgets)
 ```
 
-Each workspace has its own `package.json` and `tsconfig.json` extending `tsconfig.core.json`. Type-checking is `tsc`; linting and formatting are `oxlint` and `oxfmt`.
+Each workspace has its own `package.json` and `tsconfig.json` extending `tsconfig.core.json`. Type-checking is `bun check`; linting and formatting are `oxlint` and `oxfmt`.
 
 ## Local development
 

@@ -1,4 +1,22 @@
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import { type Browser, type BrowserContext, expect, type Page } from '@playwright/test';
+
+// WebKit exposes no OPFS in an ephemeral context
+export const newPeerContext = async (browser: Browser): Promise<BrowserContext> => {
+  const type = browser.browserType();
+  if (type.name() !== 'webkit') {
+    return await browser.newContext();
+  }
+  const dir = await mkdtemp(join(tmpdir(), 'unseen-peer-'));
+  const context = await type.launchPersistentContext(dir);
+  context.on('close', () => {
+    void rm(dir, { recursive: true, force: true });
+  });
+  return context;
+};
 
 export const waitForActive = async (page: Page): Promise<void> => {
   await expect(page.locator('[data-testid="status"]')).toHaveAttribute('data-state', 'ACTIVE', {
@@ -74,8 +92,8 @@ export const openActiveRoom = async (
   readonly alice: Page;
   readonly bob: Page;
 }> => {
-  const aliceContext = await browser.newContext();
-  const bobContext = await browser.newContext();
+  const aliceContext = await newPeerContext(browser);
+  const bobContext = await newPeerContext(browser);
   const alice = await aliceContext.newPage();
   const bob = await bobContext.newPage();
   await alice.goto('/');

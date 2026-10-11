@@ -1,6 +1,10 @@
 import { expect, type Page, test } from '@playwright/test';
 
-import { waitForActive, waitForFileTransferReady } from './fixtures/file-helpers.ts';
+import {
+  newPeerContext,
+  waitForActive,
+  waitForFileTransferReady,
+} from './fixtures/file-helpers.ts';
 import { buildPaddedPng } from './fixtures/png.ts';
 
 const SPY_INIT_SCRIPT = `
@@ -47,8 +51,8 @@ test.setTimeout(180_000);
 test('no cascade replay during 90s idle window after file transfer completes', async ({
   browser,
 }) => {
-  const aliceContext = await browser.newContext();
-  const bobContext = await browser.newContext();
+  const aliceContext = await newPeerContext(browser);
+  const bobContext = await newPeerContext(browser);
   await aliceContext.addInitScript({ content: SPY_INIT_SCRIPT });
   await bobContext.addInitScript({ content: SPY_INIT_SCRIPT });
   const alice = await aliceContext.newPage();

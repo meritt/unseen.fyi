@@ -1,13 +1,18 @@
 import { expect, test } from '@playwright/test';
 
-import { closeAll, waitForActive, waitForFileTransferReady } from './fixtures/file-helpers.ts';
+import {
+  closeAll,
+  newPeerContext,
+  waitForActive,
+  waitForFileTransferReady,
+} from './fixtures/file-helpers.ts';
 import { buildPaddedPng } from './fixtures/png.ts';
 
 test('receiver cancels mid-receive: both sides see cancelled bubble; session stays ACTIVE', async ({
   browser,
 }) => {
-  const aliceContext = await browser.newContext();
-  const bobContext = await browser.newContext();
+  const aliceContext = await newPeerContext(browser);
+  const bobContext = await newPeerContext(browser);
   try {
     const alice = await aliceContext.newPage();
     const bob = await bobContext.newPage();

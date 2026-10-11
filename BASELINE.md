@@ -2,10 +2,10 @@
 
 Web-platform features Unseen depends on that are not yet Widely available - capabilities adopted early and tracked toward interop - plus what we await. No fallbacks, no polyfills.
 
-Targets: Chrome 153 · Firefox 155 · Safari 26.6 · Bun 1.4.2.
-Support verified 2026-09-12.
+Targets: Chrome 155 · Firefox 157 · Safari 27 · Bun 1.4.3.
+Support verified 2026-10-11.
 
-Playwright 1.63.0 bundles Chromium 153, Firefox 155 and WebKit 26.6, so `test:e2e` runs at the stated floor on every engine.
+Playwright 1.64.0 bundles Chromium 156, Firefox 157 and WebKit 27.2, so `test:e2e` runs Firefox at the stated floor and Chromium and WebKit one release ahead of it.
 
 ## Client
 
@@ -29,12 +29,14 @@ Every row ships in all three target engines; _Limited_ marks Baseline's label, n
 | `text-wrap: balance`       |  114   | 121 |  17.5  | Newly 2024-05        | headings, taglines - `chat-view.css`, `landing-view.css`                                                                |
 | `scrollbar-width: thin`    |  121   | 64  |  18.2  | Newly 2024-12        | message feed - `chat-view.css`                                                                                          |
 | `scrollbar-gutter: stable` |   94   | 97  |  18.2  | Newly 2024-12        | message feed (no reflow on scrollbar) - `chat-view.css`                                                                 |
+| `overflow-anchor`          |   56   | 66  |   27   | Newly 2026-09        | message feed scroll anchoring - `chat-view.css`                                                                         |
+| Transferable streams       |   87   | 103 |   27   | Limited              | `postMessage({ stream }, [stream])` hands `file.stream()` to the send worker - `domain/file-send.ts`                    |
 
 Two rows carry no Baseline entry of their own: the WebAuthn PRF extension rolls into `webauthn` (Widely since 2021) and X25519 into `web-cryptography` (Widely), so the per-engine columns are the only support signal for them.
 
 The PRF Safari column is the weakest claim here: browser-compat-data records `create()` support from 18 but no `get()` support, while WebKit's own tracker closed the assertion-side bug in January 2026. Our PRF e2e specs are pinned to Chromium, so Safari PRF is **unverified by our suite** - confirm at runtime before relying on it.
 
-`position-anchor` is the one part of anchor positioning that lags: Chrome 151, Firefox 151, and Safari 27 for the `normal` initial value (Safari 26.x initialises it to `auto`). `utilities.css` sets `position-anchor` explicitly, so the difference does not reach us.
+File transfer needs OPFS, which Safari withholds in Private Browsing; the capability probe turns the attach button off there.
 
 ### Progressive enhancement
 
@@ -53,29 +55,25 @@ Standard base in every target engine; the listed API improves UX where present. 
 
 Visual-only. Absence changes nothing functional.
 
-| Feature              | Chrome | FF  | Safari | Where                                                                                     | Absent →                                                             |
-| -------------------- | :----: | :-: | :----: | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| `caret-shape: block` |  144   |  ✗  |   ✗    | composer caret - `composer.css`                                                           | default caret                                                        |
-| `text-wrap: pretty`  |  117   |  ✗  |   26   | chat messages, SAS caption, footer - `chat-view.css`, `sas-badge.css`, `landing-view.css` | last line not optimized                                              |
-| `scrollbar-color`    |  121   | 64  |  26.2  | message feed - `chat-view.css`                                                            | default scrollbar                                                    |
-| `overflow-anchor`    |   56   | 66  |   ✗    | message feed - `chat-view.css`                                                            | value used is `auto` (default); ResizeObserver auto-scroll covers it |
-
-`overflow-anchor` is announced for Safari 27; no released Safari has it.
+| Feature              | Chrome | FF  | Safari | Where                                                                                     | Absent →                |
+| -------------------- | :----: | :-: | :----: | ----------------------------------------------------------------------------------------- | ----------------------- |
+| `caret-shape: block` |  144   |  ✗  |   ✗    | composer caret - `composer.css`                                                           | default caret           |
+| `text-wrap: pretty`  |  117   |  ✗  |   26   | chat messages, SAS caption, footer - `chat-view.css`, `sas-badge.css`, `landing-view.css` | last line not optimized |
+| `scrollbar-color`    |  121   | 64  |  26.2  | message feed - `chat-view.css`                                                            | default scrollbar       |
 
 ## Awaiting platform support
 
 Deliberate exceptions: used in a limited way or deferred pending engine support.
 
-- **`Temporal`** - Chrome 144, Firefox 139, **no released Safari**. It reached Safari Technology Preview 249 on 2026-07-29, after the Safari 27 beta branch, and Safari 27 does not ship it; compat data still records Safari as preview-only. `Date.toISOString()` meanwhile. Bun 1.4.2 has it, which is why the ban on `Date` in client code is worth keeping. `domain/clock.ts`.
+- **`Temporal`** - Chrome 144, Firefox 139, **no released Safari**. It reached Safari Technology Preview 249 on 2026-07-29, after the Safari 27 branch, and Safari 27 does not ship it. `Date.toISOString()` meanwhile. Bun 1.4.3 has it, which is why the ban on `Date` in client code is worth keeping. `domain/clock.ts`.
 - **Streaming SHA-256 in Web Crypto** - no engine exposes an incremental `digest`, and no specification defines one: `w3c/webcrypto#73` has been open since 2016, and the live proposal (an async-iterable `digest`) is unmerged. `DigestStream` is a non-standard runtime extension, never a web API. `@noble/hashes` meanwhile.
-- **WebTransport** - available in all three target browsers, but Bun 1.4.2 exposes no server-side WebTransport (HTTP/3) API and `server.upgrade()` is HTTP/1.1 only; the relay stays on WebSocket. `transport/ws.ts`, `server/src/server.ts`.
-- **Transferable `ReadableStream` in Safari** - Safari throws `DataCloneError` through 26.6; it landed in Technology Preview 238 and is announced for Safari 27. Until it ships, file transfer stays Chrome/Firefox only.
-- **WebSocket + BFCache** - Chrome (since 149) and Safari close the socket on cache entry and fire `error` then `close` on restore; Firefox 155 still treats an open WebSocket as a BFCache blocker and reloads instead. The `pageshow.persisted` guard force-terminates either way; no key survives.
+- **WebTransport** - available in all three target browsers, but Bun 1.4.3 exposes no server-side WebTransport (HTTP/3) API and `server.upgrade()` is HTTP/1.1 only; the relay stays on WebSocket. `transport/ws.ts`, `server/src/server.ts`.
+- **WebSocket + BFCache** - Chrome (since 149) and Safari close the socket on cache entry and fire `error` then `close` on restore; Firefox 157 still treats an open WebSocket as a BFCache blocker and reloads instead. The `pageshow.persisted` guard force-terminates either way; no key survives.
 - **`scheduler.postTask` / `scheduler.yield`** - Chrome 94/129 and Firefox 142, no Safari. Not used for core logic.
 - **Interest invokers (`interestfor`)** - Chrome 142 only. Unlike the CSS rows above this is not safe as progressive enhancement: with no implementation the interaction never fires at all.
 - **`interpolate-size` / `calc-size()`** - Chrome 129 only. Acceptable as pure-CSS progressive enhancement, since an unsupported declaration is simply dropped.
-- **Explicit Resource Management (`using` / `await using`, `Symbol.dispose`, `DisposableStack`)** - Chrome 134, Firefox 141, no released Safari. The OPFS access handles, the probe worker and the Web Locks would all read better as disposables; until Safari ships, `try` / `finally` stays.
-- **`CloseWatcher`** - Chrome 126, Firefox 149, no released Safari.
-- **`crypto.subtle.supports()`** - no engine has it (the spec is still a WICG draft), so capability probing stays `try` / `catch`.
-- **WebCrypto post-quantum (ML-KEM, ML-DSA)** - shipping in Chrome 154, in beta since 2026-09-02; Firefox has the KEM methods in preview only, and both Mozilla and WebKit hold a neutral standards position. Revisit when two engines commit.
+- **Explicit Resource Management (`using` / `await using`, `Symbol.dispose`, `DisposableStack`)** - Chrome 134, Firefox 141, no released Safari (Technology Preview 250). The OPFS access handles, the probe worker and the Web Locks would all read better as disposables; until Safari ships, `try` / `finally` stays.
+- **`CloseWatcher`** - Chrome 126, Firefox 149, no released Safari (Technology Preview 249).
+- **`crypto.subtle.supports()`** - Chrome 155 only (the spec is still a WICG draft), so capability probing stays `try` / `catch`.
+- **WebCrypto post-quantum (ML-KEM, ML-DSA)** - Chrome 155 only; Firefox has the KEM methods in Nightly behind a preference, and both Mozilla and WebKit hold a neutral standards position. Revisit when two engines commit.
 - **Prioritized task scheduling** - no released Safari has `scheduler.*`, `requestIdleCallback` or `element.moveBefore()`, so the platform offers no such primitive at this floor, even though Chrome and Firefox ship all three.

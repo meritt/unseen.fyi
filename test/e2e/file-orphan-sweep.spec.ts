@@ -1,11 +1,11 @@
 import { expect, test } from '@playwright/test';
 
-import { closeAll } from './fixtures/file-helpers.ts';
+import { closeAll, newPeerContext } from './fixtures/file-helpers.ts';
 
 test('boot-sweep removes orphan opaque OPFS dirs while preserving the current session dir', async ({
   browser,
 }) => {
-  const context = await browser.newContext();
+  const context = await newPeerContext(browser);
   try {
     const page = await context.newPage();
     const ORPHAN_NAME = 'aBcD3-EfGh7';
