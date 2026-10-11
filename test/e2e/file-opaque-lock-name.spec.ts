@@ -1,11 +1,11 @@
 import { expect, test } from '@playwright/test';
 
-import { closeAll, waitForActive } from './fixtures/file-helpers.ts';
+import { closeAll, newPeerContext, waitForActive } from './fixtures/file-helpers.ts';
 
 test('navigator.locks.request is invoked with opaque names; no branded substrings', async ({
   browser,
 }) => {
-  const context = await browser.newContext();
+  const context = await newPeerContext(browser);
   try {
     const page = await context.newPage();
     await page.addInitScript(() => {
@@ -66,7 +66,7 @@ test('navigator.locks.request is invoked with opaque names; no branded substring
 test('OPFS_LOCK_NAME exported from `__unseenTest` matches the opaque pattern', async ({
   browser,
 }) => {
-  const context = await browser.newContext();
+  const context = await newPeerContext(browser);
   try {
     const page = await context.newPage();
     await page.goto('/');

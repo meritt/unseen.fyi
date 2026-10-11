@@ -1,5 +1,7 @@
 import { type BrowserContext, expect, type Page, test } from '@playwright/test';
 
+import { newPeerContext } from './fixtures/file-helpers.ts';
+
 const closeAll = async (...contexts: readonly BrowserContext[]): Promise<void> => {
   await Promise.all(contexts.map(async (ctx) => await ctx.close()));
 };
@@ -43,8 +45,8 @@ const forceFileTransferReady = async (page: Page): Promise<void> => {
 };
 
 test('typing text + attaching a file fires both on one Send', async ({ browser }) => {
-  const aliceContext = await browser.newContext();
-  const bobContext = await browser.newContext();
+  const aliceContext = await newPeerContext(browser);
+  const bobContext = await newPeerContext(browser);
   try {
     const alice = await aliceContext.newPage();
     const bob = await bobContext.newPage();

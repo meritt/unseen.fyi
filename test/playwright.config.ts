@@ -47,7 +47,8 @@ export default defineConfig({
     },
     {
       name: 'webkit',
-      // WebKit has no OPFS createSyncAccessHandle in workers; file transfer is probe-gated off, so transfer specs cannot reach ready
+      // file specs launch one persistent WebKit per peer
+      workers: 2,
       use: { ...devices['Desktop Safari'] },
       testIgnore: [
         '**/prf-mode.spec.ts',
@@ -60,23 +61,6 @@ export default defineConfig({
         '**/webauthn-mocks.spec.ts',
         '**/mode-toggle.spec.ts',
         '**/adversarial.spec.ts',
-        '**/file-receiver-decline.spec.ts',
-        '**/file-receiver-cancel.spec.ts',
-        '**/file-too-large.spec.ts',
-        '**/file-concurrent-rejected.spec.ts',
-        '**/file-opaque-dir-name.spec.ts',
-        '**/file-opaque-lock-name.spec.ts',
-        '**/file-orphan-sweep.spec.ts',
-        '**/file-text-interleave.spec.ts',
-        '**/file-large-download.spec.ts',
-        '**/file-hash-mismatch.spec.ts',
-        '**/file-opfs-evicted.spec.ts',
-        '**/file-back-to-back-transfers.spec.ts',
-        '**/file-cascade-replay.spec.ts',
-        '**/file-text-interleave-sender.spec.ts',
-        '**/file-session-receive-cap.spec.ts',
-        '**/file-pagehide-no-storage-write.spec.ts',
-        '**/file-blob-not-materialised.spec.ts',
         '**/file-csp-worker-src-no-blob.spec.ts',
         '**/file-burn-ordering.spec.ts',
         '**/file-burn-bounded-timeout.spec.ts',

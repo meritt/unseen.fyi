@@ -1,11 +1,11 @@
 import { expect, test } from '@playwright/test';
 
-import { closeAll } from './fixtures/file-helpers.ts';
+import { closeAll, newPeerContext } from './fixtures/file-helpers.ts';
 import { buildMinimalPng } from './fixtures/png.ts';
 
 test('Download path does not call Blob.prototype.arrayBuffer', async ({ browser }) => {
-  const aliceContext = await browser.newContext();
-  const bobContext = await browser.newContext();
+  const aliceContext = await newPeerContext(browser);
+  const bobContext = await newPeerContext(browser);
   try {
     const alice = await aliceContext.newPage();
     const bob = await bobContext.newPage();
