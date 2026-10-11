@@ -38,7 +38,7 @@
     "lint": "oxlint --type-aware",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
-    "typecheck": "tsc --noEmit -p shared/tsconfig.json && tsc --noEmit -p client/tsconfig.json && tsc --noEmit -p server/tsconfig.json && tsc --noEmit -p tsconfig.json",
+    "typecheck": "bun check -p shared && bun check -p client && bun check -p server && bun check",
     "test": "bun test shared client server --preload ./client/test/_helpers/dom-globals.ts --parallel",
     "test:e2e": "playwright test --config=test/playwright.config.ts",
     "build:client": "bun run --cwd client build.ts",
@@ -55,8 +55,7 @@
     "lighthouse": "^13.5.0",
     "oxfmt": "0.72.0",
     "oxlint": "1.87.0",
-    "oxlint-tsgolint": "7.0.2004",
-    "typescript": "7.0.2"
+    "oxlint-tsgolint": "7.0.2004"
   },
   "overrides": {
     "playwright-core": "1.64.0"

@@ -63,7 +63,7 @@ server/   Bun.serve relay, room registry, rate limiting, metrics, static serving
 test/     e2e/ (Playwright cross-browser), perf/ (Lighthouse + gzip budgets)
 ```
 
-Each workspace has its own `package.json` and `tsconfig.json` extending `tsconfig.core.json`. Type-checking is `tsc`; linting and formatting are `oxlint` and `oxfmt`.
+Each workspace has its own `package.json` and `tsconfig.json` extending `tsconfig.core.json`. Type-checking is `bun check`; linting and formatting are `oxlint` and `oxfmt`.
 
 ## Local development
 
