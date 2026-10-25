@@ -48,14 +48,14 @@
     "perf:lighthouse": "BUN_FEATURE_FLAG_NO_ORPHANS=1 bun run test/perf/lighthouse.ts"
   },
   "devDependencies": {
-    "@axe-core/playwright": "^4.13.0",
-    "@playwright/test": "1.64.0",
-    "@types/bun": "1.4.2",
+    "@axe-core/playwright": "^4.14.0",
+    "@playwright/test": "1.64.1",
+    "@types/bun": "1.4.3",
     "chrome-launcher": "^1.2.2",
     "lighthouse": "^13.5.0",
-    "oxfmt": "0.72.0",
-    "oxlint": "1.87.0",
-    "oxlint-tsgolint": "7.0.2004"
+    "oxfmt": "0.74.0",
+    "oxlint": "1.89.0",
+    "oxlint-tsgolint": "7.0.2005"
   },
   "overrides": {
     "playwright-core": "1.64.0"
