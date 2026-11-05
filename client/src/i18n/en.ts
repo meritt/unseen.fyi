@@ -88,8 +88,6 @@ type Dict = {
     readonly label: string;
     readonly en: string;
     readonly ru: string;
-    readonly enName: string;
-    readonly ruName: string;
   };
   readonly errors: {
     readonly duplicateTab: string;
@@ -195,8 +193,6 @@ export const en: Dict = {
     label: 'Language',
     en: 'EN',
     ru: 'RU',
-    enName: 'English',
-    ruName: 'Русский',
   },
   errors: {
     duplicateTab: 'This session is already open in another tab.',

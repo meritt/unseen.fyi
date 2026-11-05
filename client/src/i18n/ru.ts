@@ -94,8 +94,6 @@ export const ru: Dict = {
     label: 'Язык',
     en: 'EN',
     ru: 'RU',
-    enName: 'English',
-    ruName: 'Русский',
   },
   errors: {
     duplicateTab: 'Эта сессия уже открыта в другой вкладке.',

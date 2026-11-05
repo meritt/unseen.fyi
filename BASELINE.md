@@ -2,10 +2,10 @@
 
 Web-platform features Unseen depends on that are not yet Widely available - capabilities adopted early and tracked toward interop - plus what we await. No fallbacks, no polyfills.
 
-Targets: Chrome 155 · Firefox 157 · Safari 27 · Bun 1.4.3.
+Targets: Chrome 155 · Firefox 157 · Safari 27 · Bun 1.4.4.
 Support verified 2026-10-11.
 
-Playwright 1.64.0 bundles Chromium 156, Firefox 157 and WebKit 27.2, so `test:e2e` runs Firefox at the stated floor and Chromium and WebKit one release ahead of it.
+Playwright 1.64.1 bundles Chromium 156, Firefox 157 and WebKit 27.2, so `test:e2e` runs Firefox at the stated floor and Chromium and WebKit one release ahead of it.
 
 ## Client
 
@@ -65,9 +65,9 @@ Visual-only. Absence changes nothing functional.
 
 Deliberate exceptions: used in a limited way or deferred pending engine support.
 
-- **`Temporal`** - Chrome 144, Firefox 139, **no released Safari**. It reached Safari Technology Preview 249 on 2026-07-29, after the Safari 27 branch, and Safari 27 does not ship it. `Date.toISOString()` meanwhile. Bun 1.4.3 has it, which is why the ban on `Date` in client code is worth keeping. `domain/clock.ts`.
+- **`Temporal`** - Chrome 144, Firefox 139, **no released Safari**. It reached Safari Technology Preview 249 on 2026-07-29, after the Safari 27 branch, and Safari 27 does not ship it. `Date.toISOString()` meanwhile. Bun 1.4.4 has it, which is why the ban on `Date` in client code is worth keeping. `domain/clock.ts`.
 - **Streaming SHA-256 in Web Crypto** - no engine exposes an incremental `digest`, and no specification defines one: `w3c/webcrypto#73` has been open since 2016, and the live proposal (an async-iterable `digest`) is unmerged. `DigestStream` is a non-standard runtime extension, never a web API. `@noble/hashes` meanwhile.
-- **WebTransport** - available in all three target browsers, but Bun 1.4.3 exposes no server-side WebTransport (HTTP/3) API and `server.upgrade()` is HTTP/1.1 only; the relay stays on WebSocket. `transport/ws.ts`, `server/src/server.ts`.
+- **WebTransport** - available in all three target browsers, but Bun 1.4.4 exposes no server-side WebTransport (HTTP/3) API and `server.upgrade()` is HTTP/1.1 only; the relay stays on WebSocket. `transport/ws.ts`, `server/src/server.ts`.
 - **WebSocket + BFCache** - Chrome (since 149) and Safari close the socket on cache entry and fire `error` then `close` on restore; Firefox 157 still treats an open WebSocket as a BFCache blocker and reloads instead. The `pageshow.persisted` guard force-terminates either way; no key survives.
 - **`scheduler.postTask` / `scheduler.yield`** - Chrome 94/129 and Firefox 142, no Safari. Not used for core logic.
 - **Interest invokers (`interestfor`)** - Chrome 142 only. Unlike the CSS rows above this is not safe as progressive enhancement: with no implementation the interaction never fires at all.

@@ -480,6 +480,12 @@
       }
     },
     {
+      "files": ["client/src/components/chat-view.ts"],
+      "rules": {
+        "max-lines": "off"
+      }
+    },
+    {
       "files": ["client/src/domain/clock.ts"],
       "rules": {
         "no-restricted-globals": "off"

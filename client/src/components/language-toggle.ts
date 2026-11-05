@@ -39,7 +39,6 @@ export class LanguageToggle extends LitElement {
           type="button"
           data-testid="lang-en"
           lang="en"
-          aria-label=${t('langToggle.enName')}
           aria-pressed=${lang.value === 'en' ? 'true' : 'false'}
           @click=${(): void => this.#pick('en')}
         >
@@ -49,7 +48,6 @@ export class LanguageToggle extends LitElement {
           type="button"
           data-testid="lang-ru"
           lang="ru"
-          aria-label=${t('langToggle.ruName')}
           aria-pressed=${lang.value === 'ru' ? 'true' : 'false'}
           @click=${(): void => this.#pick('ru')}
         >
